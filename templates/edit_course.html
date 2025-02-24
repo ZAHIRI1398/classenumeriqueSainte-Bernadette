@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script src="https://cdn.ckeditor.com/ckeditor5/40.1.0/classic/ckeditor.js"></script>
+<style>
+    .ck-editor__editable {
+        min-height: 300px;
+    }
+</style>
+{% endblock %}
+
+{% block title %}Modifier le cours{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('teacher_dashboard') }}">Tableau de bord</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('view_course', course_id=course.id) }}">{{ course.title }}</a></li>
+                    <li class="breadcrumb-item active">Modifier</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h4 class="mb-0">Modifier le cours</h4>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                {{ form.csrf_token }}
+                
+                <div class="mb-3">
+                    {{ form.title.label(class="form-label") }}
+                    {{ form.title(class="form-control" + (" is-invalid" if form.title.errors else "")) }}
+                    {% for error in form.title.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    {{ form.description.label(class="form-label") }}
+                    {{ form.description(class="form-control" + (" is-invalid" if form.description.errors else "")) }}
+                    {% for error in form.description.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+
+                <div class="mb-3">
+                    {{ form.content.label(class="form-label") }}
+                    <textarea id="content" name="content">{{ course.content }}</textarea>
+                    {% for error in form.content.errors %}
+                        <div class="invalid-feedback">{{ error }}</div>
+                    {% endfor %}
+                </div>
+
+                {% if course.files %}
+                <div class="form-group mb-3">
+                    <h4>Fichiers actuels</h4>
+                    <ul class="list-group">
+                        {% for file in course.files %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            {{ file.filename }}
+                            <div>
+                                <a href="{{ url_for('download_course_file', file_id=file.id) }}" class="btn btn-sm btn-primary">Télécharger</a>
+                                <a href="{{ url_for('delete_course_file', file_id=file.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Êtes-vous sûr de vouloir supprimer ce fichier ?');">Supprimer</a>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="form-group mb-3">
+                    <label for="files">Ajouter des fichiers</label>
+                    <input type="file" class="form-control" id="files" name="files" multiple>
+                </div>
+
+                <div class="text-end">
+                    <a href="{{ url_for('view_course', course_id=course.id) }}" class="btn btn-secondary">Annuler</a>
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+ClassicEditor
+    .create(document.querySelector('#content'), {
+        toolbar: {
+            items: [
+                'heading',
+                '|',
+                'bold',
+                'italic',
+                'link',
+                'bulletedList',
+                'numberedList',
+                '|',
+                'uploadImage',
+                'mediaEmbed',
+                '|',
+                'undo',
+                'redo'
+            ]
+        },
+        image: {
+            toolbar: [
+                'imageStyle:inline',
+                'imageStyle:block',
+                'imageStyle:side',
+                '|',
+                'toggleImageCaption',
+                'imageTextAlternative'
+            ],
+            upload: {
+                types: ['jpeg', 'png', 'gif', 'jpg'],
+                url: '{{ url_for("upload_image", course_id=course.id) }}'
+            }
+        },
+        mediaEmbed: {
+            previewsInData: true,
+            providers: [
+                {
+                    name: 'youtube',
+                    url: [
+                        /^(?:m\.)?youtube\.com\/watch\?v=([\w-]+)/,
+                        /^(?:m\.)?youtube\.com\/v\/([\w-]+)/,
+                        /^youtube\.com\/embed\/([\w-]+)/,
+                        /^youtu\.be\/([\w-]+)/
+                    ],
+                    html: match => {
+                        const id = match[1];
+                        return (
+                            '<div class="embed-responsive embed-responsive-16by9">' +
+                            '<iframe class="embed-responsive-item" ' +
+                            'src="https://www.youtube.com/embed/' + id + '" ' +
+                            'frameborder="0" allow="autoplay; encrypted-media" allowfullscreen>' +
+                            '</iframe>' +
+                            '</div>'
+                        );
+                    }
+                }
+            ]
+        }
+    })
+    .then(editor => {
+        // L'éditeur est prêt
+        console.log('Editor initialized');
+    })
+    .catch(error => {
+        console.error(error);
+    });
+</script>
+{% endblock %}

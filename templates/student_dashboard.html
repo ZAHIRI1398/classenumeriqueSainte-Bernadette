@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord - Étudiant{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <!-- Colonne de gauche : Mes classes -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Mes classes</h4>
+                </div>
+                <div class="card-body">
+                    {% if current_user.enrollments %}
+                        <div class="row">
+                            {% for enrollment in current_user.enrollments %}
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100">
+                                    <div class="card-header">
+                                        <h5 class="card-title mb-0">{{ enrollment.enrolled_class.name }}</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if enrollment.enrolled_class.courses %}
+                                            <div class="list-group">
+                                                {% for course in enrollment.enrolled_class.courses %}
+                                                <a href="{{ url_for('view_course', course_id=course.id) }}" 
+                                                   class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <i class="fas fa-book me-2"></i>
+                                                        {{ course.title }}
+                                                        <small class="text-muted d-block">{{ course.subject }}</small>
+                                                    </div>
+                                                    {% set exercise_count = course.exercises|length %}
+                                                    {% if exercise_count > 0 %}
+                                                    <span class="badge bg-primary rounded-pill">
+                                                        {{ exercise_count }} exercice{{ 's' if exercise_count > 1 }}
+                                                    </span>
+                                                    {% endif %}
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <p class="text-muted mb-0">Aucun cours disponible pour le moment.</p>
+                                        {% endif %}
+                                    </div>
+                                    <div class="card-footer">
+                                        <small class="text-muted">
+                                            <i class="fas fa-user-tie me-1"></i>
+                                            Prof: {{ enrollment.enrolled_class.teacher.username }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Vous n'êtes inscrit à aucune classe pour le moment.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Colonne de droite : Rejoindre une classe -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">Rejoindre une classe</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('join_class') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-3">
+                            <label for="class_code" class="form-label">Code de la classe</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="class_code" 
+                                   name="class_code" 
+                                   placeholder="Entrez le code fourni par votre enseignant"
+                                   required>
+                            <div class="form-text">
+                                Entrez le code fourni par votre enseignant pour rejoindre une nouvelle classe.
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fas fa-plus-circle me-2"></i>
+                            Rejoindre la classe
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Section des exercices récents -->
+            <div class="card mt-4">
+                <div class="card-header bg-info text-white">
+                    <h4 class="mb-0">Exercices récents</h4>
+                </div>
+                <div class="card-body">
+                    {% set recent_exercises = [] %}
+                    {% for enrollment in current_user.enrollments %}
+                        {% for course in enrollment.enrolled_class.courses %}
+                            {% for exercise in course.exercises %}
+                                {% if recent_exercises|length < 5 %}
+                                    {% set _ = recent_exercises.append(exercise) %}
+                                {% endif %}
+                            {% endfor %}
+                        {% endfor %}
+                    {% endfor %}
+
+                    {% if recent_exercises %}
+                        <div class="list-group">
+                            {% for exercise in recent_exercises %}
+                            <a href="{{ url_for('view_exercise', exercise_id=exercise.id) }}" 
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">{{ exercise.title }}</h6>
+                                    <small class="text-muted">{{ exercise.points }} pts</small>
+                                </div>
+                                <small class="text-muted">
+                                    {{ exercise.course.title }} - {{ exercise.subject }}
+                                </small>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">Aucun exercice disponible pour le moment.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

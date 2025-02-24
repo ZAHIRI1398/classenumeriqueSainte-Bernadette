@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Créer un nouvel exercice</h2>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="exercise-form">
+                        {{ form.csrf_token }}
+                        {% if class_id %}
+                        <input type="hidden" name="class_id" value="{{ class_id }}">
+                        {% endif %}
+                        {% if course_id %}
+                        <input type="hidden" name="course_id" value="{{ course_id }}">
+                        {% endif %}
+                        
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Titre</label>
+                            {{ form.title(class="form-control", placeholder="Titre de l'exercice") }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            {{ form.description(class="form-control", rows=3, placeholder="Description de l'exercice") }}
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="course_id" class="form-label">Cours <span class="text-danger">*</span></label>
+                            <select class="form-select" id="course_id" name="course_id" required>
+                                <option value="">Sélectionnez un cours</option>
+                                {% for class in teacher_classes %}
+                                    <optgroup label="{{ class.name }}">
+                                        {% for course in class.courses %}
+                                            <option value="{{ course.id }}" {% if request.args.get('class_id')|int == class.id %}selected{% endif %}>
+                                                {{ course.title }}
+                                            </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Sélectionnez le cours auquel cet exercice sera rattaché</div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="subject" class="form-label">Matière</label>
+                                {{ form.subject(class="form-select") }}
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="level" class="form-label">Niveau</label>
+                                {{ form.level(class="form-select") }}
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="exercise_type" class="form-label">Type d'exercice</label>
+                                {{ form.exercise_type(class="form-select") }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="difficulty" class="form-label">Difficulté</label>
+                                {{ form.difficulty(class="form-select") }}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="points" class="form-label">Points</label>
+                                {{ form.points(class="form-control", type="number", min="0") }}
+                            </div>
+                        </div>
+
+                        <div id="text-holes-fields" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">Texte à trous</label>
+                                <div id="holes-container">
+                                    <!-- Les trous seront ajoutés ici -->
+                                </div>
+                                <button type="button" class="btn btn-primary mt-2" id="add-hole">
+                                    <i class="fas fa-plus"></i> Ajouter un trou
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <a href="{{ url_for('exercise_library') }}" class="btn btn-secondary">Annuler</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Créer l'exercice
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const exerciseTypeSelect = document.getElementById('exercise_type');
+    const textHolesFields = document.getElementById('text-holes-fields');
+    const form = document.getElementById('exercise-form');
+    
+    // Log initial state
+    console.log('Initial form state:', {
+        exerciseType: exerciseTypeSelect.value,
+        textHolesVisible: textHolesFields.style.display,
+        formFields: Array.from(form.elements).map(e => ({
+            name: e.name,
+            value: e.value,
+            type: e.type
+        }))
+    });
+    
+    function updateFieldsVisibility() {
+        const selectedType = exerciseTypeSelect.value;
+        console.log('Exercise type changed to:', selectedType);
+        textHolesFields.style.display = selectedType === 'holes' ? 'block' : 'none';
+        
+        if (selectedType === 'holes' && document.getElementById('holes-container').children.length === 0) {
+            console.log('Adding first hole automatically');
+            addNewHole();
+        }
+    }
+    
+    exerciseTypeSelect.addEventListener('change', updateFieldsVisibility);
+    updateFieldsVisibility();
+
+    function addNewHole() {
+        const container = document.getElementById('holes-container');
+        const holeIndex = container.children.length + 1;
+        console.log('Adding new hole #', holeIndex);
+        
+        const holeGroup = document.createElement('div');
+        holeGroup.className = 'hole-group mb-4 border p-3 rounded bg-light';
+        
+        holeGroup.innerHTML = `
+            <h5 class="mb-3">Trou #${holeIndex}</h5>
+            <div class="mb-3">
+                <label class="form-label">Texte avant le trou</label>
+                <textarea class="form-control text-before" rows="2"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Réponse correcte <span class="text-danger">*</span></label>
+                <input type="text" class="form-control correct-answer" required>
+                <div class="form-text">La réponse que l'étudiant devra entrer</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Texte après le trou</label>
+                <textarea class="form-control text-after" rows="2"></textarea>
+            </div>
+            <button type="button" class="btn btn-outline-danger remove-hole">
+                <i class="fas fa-trash"></i> Supprimer ce trou
+            </button>
+        `;
+        
+        container.appendChild(holeGroup);
+        console.log('New hole added, total holes:', container.children.length);
+    }
+
+    document.getElementById('add-hole').addEventListener('click', addNewHole);
+
+    document.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-hole')) {
+            const container = document.getElementById('holes-container');
+            if (container.children.length > 1) {
+                if (confirm('Êtes-vous sûr de vouloir supprimer ce trou ?')) {
+                    e.target.closest('.hole-group').remove();
+                    Array.from(container.children).forEach((hole, index) => {
+                        hole.querySelector('h5').textContent = `Trou #${index + 1}`;
+                    });
+                    console.log('Hole removed, remaining holes:', container.children.length);
+                }
+            } else {
+                alert('Vous devez garder au moins un trou.');
+            }
+        }
+    });
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        console.log('Form submission started');
+        
+        // Log all form fields
+        const formData = new FormData(form);
+        console.log('Form fields before processing:');
+        for (let [key, value] of formData.entries()) {
+            console.log(`${key}: ${value}`);
+        }
+        
+        // Validate required fields
+        const requiredFields = ['title', 'description', 'subject', 'level', 'difficulty', 'points', 'course_id'];
+        let missingFields = [];
+        
+        requiredFields.forEach(field => {
+            const value = formData.get(field);
+            if (!value) {
+                missingFields.push(field);
+            }
+        });
+        
+        if (missingFields.length > 0) {
+            console.error('Missing required fields:', missingFields);
+            alert('Veuillez remplir tous les champs obligatoires : ' + missingFields.join(', '));
+            return;
+        }
+        
+        if (exerciseTypeSelect.value === 'holes') {
+            console.log('Processing holes exercise submission');
+            const holes = [];
+            let valid = true;
+            
+            document.querySelectorAll('.hole-group').forEach((holeGroup, index) => {
+                const textBefore = holeGroup.querySelector('.text-before').value;
+                const correctAnswer = holeGroup.querySelector('.correct-answer').value.trim();
+                const textAfter = holeGroup.querySelector('.text-after').value;
+                
+                console.log(`Processing hole #${index + 1}:`, {
+                    textBefore,
+                    correctAnswer,
+                    textAfter
+                });
+                
+                if (!correctAnswer) {
+                    valid = false;
+                    const input = holeGroup.querySelector('.correct-answer');
+                    input.classList.add('is-invalid');
+                    if (!input.nextElementSibling || !input.nextElementSibling.classList.contains('invalid-feedback')) {
+                        const feedback = document.createElement('div');
+                        feedback.className = 'invalid-feedback';
+                        feedback.textContent = `La réponse du trou #${index + 1} est requise`;
+                        input.parentNode.insertBefore(feedback, input.nextSibling);
+                    }
+                    console.error(`Missing correct answer for hole #${index + 1}`);
+                }
+                
+                holes.push({
+                    text_before: textBefore,
+                    correct_answer: correctAnswer,
+                    text_after: textAfter
+                });
+            });
+            
+            if (!valid) {
+                console.error('Form validation failed: missing required answers');
+                alert('Veuillez remplir toutes les réponses correctes.');
+                return;
+            }
+            
+            // Ajouter les données des trous au formulaire
+            const holesDataInput = document.createElement('input');
+            holesDataInput.type = 'hidden';
+            holesDataInput.name = 'holes_data';
+            holesDataInput.value = JSON.stringify(holes);
+            form.appendChild(holesDataInput);
+            
+            console.log('Final holes data:', holes);
+        }
+        
+        // Log final form data before submission
+        const finalFormData = new FormData(form);
+        console.log('Final form data before submission:');
+        for (let [key, value] of finalFormData.entries()) {
+            console.log(`${key}: ${value}`);
+        }
+        
+        // Submit the form
+        console.log('Submitting form...');
+        form.submit();
+    });
+});
+</script>
+{% endblock %}

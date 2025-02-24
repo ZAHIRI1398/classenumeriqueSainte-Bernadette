@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+.toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 15px 25px;
+    border-radius: 4px;
+    color: white;
+    z-index: 1000;
+    animation: slideIn 0.5s, fadeOut 0.5s 2.5s;
+    opacity: 0;
+}
+
+.toast.success {
+    background-color: #28a745;
+}
+
+.toast.error {
+    background-color: #dc3545;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Bibliothèque d'exercices</h1>
+        <a href="{{ url_for('create_exercise') }}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Nouvel exercice
+        </a>
+    </div>
+
+    <!-- Filtres -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="filterForm" class="row g-3">
+                <div class="col-md-3">
+                    <label for="subject" class="form-label">Matière</label>
+                    <select class="form-select" id="subject" name="subject">
+                        <option value="">Toutes les matières</option>
+                        <optgroup label="Mathématiques">
+                            <option value="nombres_operations" {% if selected_subject == 'nombres_operations' %}selected{% endif %}>Nombres et opérations</option>
+                            <option value="solides_figures" {% if selected_subject == 'solides_figures' %}selected{% endif %}>Solides et figures</option>
+                            <option value="grandeurs" {% if selected_subject == 'grandeurs' %}selected{% endif %}>Grandeurs</option>
+                        </optgroup>
+                        <optgroup label="Français">
+                            <option value="grammaire" {% if selected_subject == 'grammaire' %}selected{% endif %}>Grammaire</option>
+                            <option value="conjugaison" {% if selected_subject == 'conjugaison' %}selected{% endif %}>Conjugaison</option>
+                            <option value="orthographe" {% if selected_subject == 'orthographe' %}selected{% endif %}>Orthographe</option>
+                            <option value="vocabulaire" {% if selected_subject == 'vocabulaire' %}selected{% endif %}>Vocabulaire</option>
+                            <option value="lecture_ecriture" {% if selected_subject == 'lecture_ecriture' %}selected{% endif %}>Lecture/Écriture</option>
+                            <option value="litterature" {% if selected_subject == 'litterature' %}selected{% endif %}>Littérature</option>
+                        </optgroup>
+                        <optgroup label="Éveil">
+                            <option value="eveil" {% if selected_subject == 'eveil' %}selected{% endif %}>Éveil</option>
+                            <option value="sciences" {% if selected_subject == 'sciences' %}selected{% endif %}>Sciences</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="level" class="form-label">Niveau</label>
+                    <select class="form-select" id="level" name="level">
+                        <option value="">Tous les niveaux</option>
+                        <option value="1obs" {% if selected_level == '1obs' %}selected{% endif %}>1obs</option>
+                        <option value="1phase" {% if selected_level == '1phase' %}selected{% endif %}>1phase</option>
+                        <option value="2phase" {% if selected_level == '2phase' %}selected{% endif %}>2phase</option>
+                        <option value="6ème" {% if selected_level == '6ème' %}selected{% endif %}>6ème</option>
+                        <option value="5ème" {% if selected_level == '5ème' %}selected{% endif %}>5ème</option>
+                        <option value="4ème" {% if selected_level == '4ème' %}selected{% endif %}>4ème</option>
+                        <option value="3ème" {% if selected_level == '3ème' %}selected{% endif %}>3ème</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="class" class="form-label">Classe</label>
+                    <select class="form-select" id="class" name="class_id">
+                        <option value="">Toutes les classes</option>
+                        {% for class in teacher_classes %}
+                        <option value="{{ class.id }}" {% if selected_class_id|string == class.id|string %}selected{% endif %}>
+                            {{ class.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="type" class="form-label">Type d'exercice</label>
+                    <select class="form-select" id="type" name="type">
+                        <option value="">Tous les types</option>
+                        <option value="qcm" {% if selected_type == 'qcm' %}selected{% endif %}>QCM</option>
+                        <option value="holes" {% if selected_type == 'holes' %}selected{% endif %}>Texte à trous</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary d-block">
+                        <i class="fas fa-filter"></i> Filtrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Liste des exercices -->
+    <div id="exercisesList" class="row g-4">
+        {% for exercise in exercises %}
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <span class="badge bg-primary">{{ exercise.subject }}</span>
+                    <span class="badge bg-secondary">{{ exercise.level }}ème</span>
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{ exercise.title }}</h5>
+                    <p class="card-text">
+                        <small class="text-muted">Type: {{ exercise.exercise_type }}</small>
+                    </p>
+                    <div class="btn-group">
+                        <a href="{{ url_for('view_exercise', exercise_id=exercise.id) }}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-eye"></i> Voir
+                        </a>
+                        {% if current_user.is_teacher %}
+                        <div class="btn-group dropdown">
+                            <button class="btn btn-success btn-sm dropdown-toggle" type="button" id="addToClassDropdown{{ exercise.id }}" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-plus"></i> Ajouter à une classe
+                            </button>
+                            <ul class="dropdown-menu" aria-labelledby="addToClassDropdown{{ exercise.id }}">
+                                {% for class in current_user.classes_taught %}
+                                <li>
+                                    <a class="dropdown-item" href="#" onclick="addExerciseToClass({{ exercise.id }}, {{ class.id }}); return false;">
+                                        {{ class.name }}
+                                    </a>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-footer text-muted">
+                    Créé le {{ exercise.created_at.strftime('%d/%m/%Y') if exercise.created_at else 'Date inconnue' }}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                Aucun exercice ne correspond à vos critères de recherche.
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+function addExerciseToClass(exerciseId, classId) {
+    fetch(`/exercise/${exerciseId}/add_to_class?class_id=${classId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Erreur réseau');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.error) {
+            showToast('error', data.error);
+        } else {
+            showToast('success', data.message || 'Exercice ajouté avec succès');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showToast('error', 'Une erreur est survenue lors de l\'ajout de l\'exercice');
+    });
+}
+
+function showToast(type, message) {
+    // Créer le toast
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    
+    // Ajouter le toast au document
+    document.body.appendChild(toast);
+    
+    // Forcer un reflow pour que l'animation fonctionne
+    toast.offsetHeight;
+    
+    // Définir l'opacité à 1 pour déclencher l'animation
+    toast.style.opacity = '1';
+    
+    // Supprimer le toast après l'animation
+    setTimeout(() => {
+        if (toast && toast.parentElement) {
+            toast.parentElement.removeChild(toast);
+        }
+    }, 3000);
+}
+</script>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Fonction pour afficher un message toast
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-white bg-${type} border-0 position-fixed top-0 end-0 m-3`;
+        toast.style.zIndex = '1050';
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+        document.body.appendChild(toast);
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    }
+
+    // Gestionnaire du formulaire de filtrage
+    const filterForm = document.getElementById('filterForm');
+    filterForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Récupérer les valeurs des filtres
+        const subject = document.getElementById('subject').value;
+        const level = document.getElementById('level').value;
+        
+        console.log('Filtrage - Valeurs sélectionnées:', { subject, level });
+        
+        // Construire l'URL avec les paramètres
+        const url = `/api/filter_exercises?subject=${encodeURIComponent(subject)}&level=${encodeURIComponent(level)}`;
+        console.log('URL de filtrage:', url);
+        
+        // Faire la requête GET
+        fetch(url)
+            .then(response => {
+                console.log('Statut de la réponse:', response.status);
+                return response.json();
+            })
+            .then(exercises => {
+                console.log('Exercices reçus:', exercises);
+                const exerciseList = document.getElementById('exercisesList');
+                exerciseList.innerHTML = '';
+                
+                exercises.forEach(exercise => {
+                    console.log('Traitement de l\'exercice:', exercise);
+                    // Créer une nouvelle carte pour chaque exercice
+                    const card = document.createElement('div');
+                    card.className = 'col-md-4 mb-4';
+                    
+                    // Construire l'URL de l'exercice
+                    const viewUrl = "{{ url_for('view_exercise', exercise_id=0) }}".replace('0', exercise.id);
+                    console.log('URL de visualisation générée:', viewUrl);
+                    
+                    card.innerHTML = `
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">${exercise.title}</h5>
+                                <p class="card-text">${exercise.description || ''}</p>
+                                <p class="card-text">
+                                    <small class="text-muted">
+                                        Matière: ${exercise.subject}<br>
+                                        Niveau: ${exercise.level}
+                                    </small>
+                                </p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <a href="${viewUrl}" class="btn btn-primary btn-sm" onclick="console.log('Clic sur Voir exercice:', ${exercise.id})">
+                                        <i class="fas fa-eye"></i> Voir
+                                    </a>
+                                    {% if current_user.is_teacher %}
+                                    <div class="dropdown">
+                                        <button class="btn btn-success btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                            <i class="fas fa-plus"></i> Ajouter à une classe
+                                        </button>
+                                        <ul class="dropdown-menu">
+                                            {% for class in teacher_classes %}
+                                            <li><a class="dropdown-item" href="#" onclick="addExerciseToClass(${exercise.id}, {{ class.id }})">{{ class.name }}</a></li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    exerciseList.appendChild(card);
+                });
+            })
+            .catch(error => {
+                console.error('Erreur lors du filtrage:', error);
+                showToast('Une erreur est survenue lors du filtrage des exercices', 'danger');
+            });
+    });
+});
+</script>
+{% endblock %}
