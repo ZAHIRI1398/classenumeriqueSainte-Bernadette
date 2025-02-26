@@ -1105,9 +1105,17 @@ def view_exercise(exercise_id):
         # Récupérer toutes les soumissions si c'est un enseignant
         submissions = None
         if current_user.role == 'teacher':
+            # Récupérer les IDs des classes de l'enseignant
+            teacher_classes = Class.query.filter_by(teacher_id=current_user.id).with_entities(Class.id).all()
+            teacher_class_ids = [c.id for c in teacher_classes]
+            
+            # Récupérer les soumissions des élèves dans les classes de l'enseignant
             submissions = ExerciseSubmission.query.filter_by(
                 exercise_id=exercise_id
-            ).join(User, User.id == ExerciseSubmission.student_id).order_by(ExerciseSubmission.submitted_at.desc()).all()
+            ).join(User, User.id == ExerciseSubmission.student_id)\
+             .join(ClassEnrollment, ClassEnrollment.student_id == User.id)\
+             .filter(ClassEnrollment.class_id.in_(teacher_class_ids))\
+             .order_by(ExerciseSubmission.submitted_at.desc()).all()
             logger.debug(f"Nombre de soumissions trouvées: {len(submissions) if submissions else 0}")
         
         is_teacher = current_user.role == 'teacher'

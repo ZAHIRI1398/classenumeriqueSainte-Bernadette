@@ -165,5 +165,33 @@ document.getElementById('filter-button').addEventListener('click', function() {
                 </div>`;
         });
 });
+
+function addToClass(exerciseId) {
+    const classId = document.getElementById('class-filter').value;
+    if (!classId) {
+        alert('Veuillez sélectionner une classe avant d\'ajouter l\'exercice.');
+        return;
+    }
+
+    fetch(`/exercise/${exerciseId}/add_to_class?class_id=${classId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Erreur : ' + data.error);
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        alert('Une erreur s\'est produite lors de l\'ajout de l\'exercice à la classe.');
+    });
+}
 </script>
 {% endblock %}
