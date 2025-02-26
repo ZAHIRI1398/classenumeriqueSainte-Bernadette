@@ -70,21 +70,18 @@ class ExerciseForm(FlaskForm):
     title = StringField('Titre', validators=[DataRequired()])
     description = TextAreaField('Description')
     subject = SelectField('Matière', choices=[
-        # Mathématiques
-        ('nombres_operations', 'Mathématiques - Nombres et opérations'),
-        ('solides_figures', 'Mathématiques - Solides et figures'),
-        ('grandeurs', 'Mathématiques - Grandeurs'),
-        # Français
-        ('grammaire', 'Français - Grammaire'),
-        ('conjugaison', 'Français - Conjugaison'),
-        ('orthographe', 'Français - Orthographe'),
-        ('vocabulaire', 'Français - Vocabulaire'),
-        ('lecture_ecriture', 'Français - Lecture/Écriture'),
-        ('litterature', 'Français - Littérature'),
-        # Éveil
-        ('eveil', 'Éveil'),
-        ('sciences', 'Sciences')
-    ])
+        ('mathematiques_nombres', 'Mathématiques - Nombres et opérations'),
+        ('mathematiques_grandeurs', 'Mathématiques - Grandeurs'),
+        ('mathematiques_solides', 'Mathématiques - Solides et Figures'),
+        ('francais_grammaire', 'Français - Grammaire'),
+        ('francais_conjugaison', 'Français - Conjugaison'),
+        ('francais_vocabulaire', 'Français - Vocabulaire'),
+        ('francais_dictee', 'Français - Dictée'),
+        ('eveil_histoire', 'Eveil - Histoire'),
+        ('eveil_geographie', 'Eveil - Géographie'),
+        ('sciences_biologie', 'Sciences - Biologie'),
+        ('sciences_physique', 'Sciences - Physique')
+    ], validators=[DataRequired()])
     level = SelectField('Niveau', choices=[
         ('1obs', '1obs'),
         ('1phase', '1phase'),
@@ -92,18 +89,19 @@ class ExerciseForm(FlaskForm):
         ('6ème', '6ème'),
         ('5ème', '5ème'),
         ('4ème', '4ème'),
-        ('3ème', '3ème'),
-    ])
+        ('3ème', '3ème')
+    ], validators=[DataRequired()])
     difficulty = SelectField('Difficulté', choices=[
         ('easy', 'Facile'),
         ('medium', 'Moyen'),
         ('hard', 'Difficile')
-    ])
-    points = IntegerField('Points', validators=[DataRequired(), NumberRange(min=0)])
+    ], validators=[DataRequired()])
+    points = IntegerField('Points', validators=[DataRequired(), NumberRange(min=1)])
     exercise_type = SelectField('Type d\'exercice', choices=[
-        ('holes', 'Texte à trous'),
-        ('qcm', 'QCM')
-    ])
+        ('text_holes', 'Texte à trous'),
+        ('QCM', 'QCM')
+    ], validators=[DataRequired()])
+    course_id = SelectField('Cours', coerce=int, validators=[Optional()])
     image = FileField('Image', validators=[
         Optional(),
         FileAllowed(['jpg', 'png', 'gif'], 'Images uniquement!')

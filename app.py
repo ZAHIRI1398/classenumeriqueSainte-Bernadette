@@ -6,10 +6,10 @@ from logging.handlers import RotatingFileHandler
 from flask import Flask, render_template, url_for, flash, redirect, request, jsonify, send_from_directory, abort, session
 from flask_login import login_user, current_user, logout_user, login_required, LoginManager, UserMixin
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf import FlaskForm, CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
-from sqlalchemy import and_  # Import de and_
 import json
 from datetime import timedelta
 from urllib.parse import urlparse
@@ -27,6 +27,10 @@ logger.info('Application démarrée')
 import sys
 from extensions import db, migrate, bcrypt, csrf
 
+# Configuration des dossiers
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
 # Import des formulaires
 from forms import (LoginForm, RegistrationForm, ClassForm, CourseForm, 
                   ExerciseForm, GradeForm, TextHoleForm, QuestionForm, ChoiceForm)
@@ -34,19 +38,22 @@ from forms import (LoginForm, RegistrationForm, ClassForm, CourseForm,
 # Configuration de l'application
 app = Flask(__name__)
 app.config.from_object('config')
-app.config['SECRET_KEY'] = 'votre_cle_secrete_ici'  # Remplacer par une vraie clé secrète
+app.config['SECRET_KEY'] = 'votre_cle_secrete_ici'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)  # Sessions durent 7 jours
-app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=7)    # Cookie "remember me" dure 7 jours
-app.config['REMEMBER_COOKIE_SECURE'] = False  # Mettre à True en production
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=7)
+app.config['REMEMBER_COOKIE_SECURE'] = False
 app.config['REMEMBER_COOKIE_HTTPONLY'] = True
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
 
 # Initialisation des extensions
 db.init_app(app)
 migrate.init_app(app, db)
 bcrypt.init_app(app)
-csrf.init_app(app)
+csrf = CSRFProtect(app)  # Initialiser la protection CSRF
 
 # Initialisation de Flask-Login
 login_manager = LoginManager()
@@ -63,23 +70,20 @@ def load_user(user_id):
 from models import User, Class, Course, Exercise, ExerciseSubmission, CourseFile, Question, Choice, TextHole, ClassEnrollment, ClassExercise
 from logs import logger, log_database_error, log_form_data, log_model_creation, log_request_info
 
-# Configuration du dossier d'upload
-UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# Filtre Jinja pour convertir le JSON en objet Python
+@app.template_filter('from_json')
+def from_json(value):
+    return json.loads(value) if value else []
 
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# Créer le dossier uploads s'il n'existe pas
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Configuration des dossiers statiques
 app.static_folder = 'static'
 app.static_url_path = '/static'
-
-# Configuration des extensions de fichiers autorisées
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Décorateur pour restreindre l'accès aux enseignants
 def teacher_required(f):
@@ -171,62 +175,105 @@ def logout():
     flash('Vous avez été déconnecté avec succès.', 'info')
     return redirect(url_for('login'))
 
-@app.route('/teacher-dashboard')
+@app.route('/dashboard')
 @login_required
-def teacher_dashboard():
-    if not current_user.is_teacher:
-        flash('Accès non autorisé. Cette page est réservée aux enseignants.', 'danger')
-        return redirect(url_for('index'))
-    
-    # Récupérer les statistiques de l'enseignant
-    stats = current_user.get_teacher_stats()
-    logger.debug(f"Statistiques de l'enseignant : {stats}")
-    
-    # Récupérer les classes de l'enseignant
-    classes = Class.query.filter_by(teacher_id=current_user.id).all()
-    
-    # Récupérer les soumissions récentes avec scores
-    recent_submissions = ExerciseSubmission.query\
-        .join(Exercise)\
-        .join(Course)\
-        .join(Class)\
-        .filter(Class.teacher_id == current_user.id)\
-        .order_by(ExerciseSubmission.submitted_at.desc())\
-        .limit(10)\
-        .all()
-    
-    # Récupérer les soumissions en attente de notation
-    pending_submissions = ExerciseSubmission.query\
-        .join(Exercise)\
-        .join(Course)\
-        .join(Class)\
-        .filter(Class.teacher_id == current_user.id)\
-        .filter(ExerciseSubmission.score.is_(None))\
-        .order_by(ExerciseSubmission.submitted_at.desc())\
-        .limit(5)\
-        .all()
-    
-    return render_template('teacher_dashboard.html', 
-                         title='Tableau de Bord',
-                         stats=stats,
-                         classes=classes,
-                         recent_submissions=recent_submissions,
-                         pending_submissions=pending_submissions)
+def dashboard():
+    if current_user.role == 'teacher':
+        return redirect(url_for('teacher_dashboard'))
+    else:
+        return redirect(url_for('student_dashboard'))
 
-@app.route('/student-dashboard')
+@app.route('/teacher_dashboard')
+@login_required
+@teacher_required
+def teacher_dashboard():
+    try:
+        # Récupérer les classes de l'enseignant
+        teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
+        
+        # Récupérer les exercices créés par l'enseignant
+        exercises = Exercise.query.filter_by(created_by=current_user.id).all()
+        
+        # Calculer les statistiques
+        total_classes = len(teacher_classes)
+        
+        # Calculer le nombre total d'élèves uniques
+        student_set = set()
+        for class_ in teacher_classes:
+            student_set.update([student.id for student in class_.students])
+        total_students = len(student_set)
+        
+        # Calculer le nombre total d'exercices
+        total_exercises = len(exercises)
+        
+        stats = {
+            'total_classes': total_classes,
+            'total_students': total_students,
+            'total_exercises': total_exercises
+        }
+        
+        return render_template('teacher_dashboard.html',
+                             classes=teacher_classes,
+                             exercises=exercises,
+                             stats=stats)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'accès au tableau de bord enseignant: {str(e)}")
+        flash("Une erreur s'est produite lors de l'accès au tableau de bord.", "error")
+        return redirect(url_for('index'))
+
+@app.route('/student_dashboard')
 @login_required
 def student_dashboard():
-    if current_user.is_teacher:
+    if current_user.role == 'teacher':
         return redirect(url_for('teacher_dashboard'))
-    
-    # Récupérer les inscriptions de l'étudiant
-    enrollments = ClassEnrollment.query.filter_by(student_id=current_user.id).all()
-    student_classes = [enrollment.enrolled_class for enrollment in enrollments]
-    
-    # Récupérer les soumissions d'exercices de l'étudiant
-    submissions = ExerciseSubmission.query.filter_by(student_id=current_user.id).order_by(ExerciseSubmission.submitted_at.desc()).limit(5).all()
-    
-    return render_template('student_dashboard.html', classes=student_classes, submissions=submissions)
+        
+    try:
+        # Créer un formulaire vide pour le jeton CSRF
+        form = FlaskForm()
+        
+        # Récupérer les inscriptions de l'élève
+        enrollments = ClassEnrollment.query.filter_by(student_id=current_user.id).all()
+        
+        # Récupérer les exercices disponibles pour l'élève
+        available_exercises = []
+        for enrollment in enrollments:
+            class_ = enrollment.enrolled_class
+            for course in class_.courses:
+                exercises = Exercise.query.filter_by(course_id=course.id).all()
+                for exercise in exercises:
+                    available_exercises.append({
+                        'exercise': exercise,
+                        'class': class_,
+                        'course': course
+                    })
+        
+        return render_template('student_dashboard.html',
+                             enrollments=enrollments,
+                             available_exercises=available_exercises,
+                             form=form)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'accès au tableau de bord étudiant: {str(e)}")
+        flash("Une erreur s'est produite lors de l'accès au tableau de bord.", "error")
+        return redirect(url_for('index'))
+
+@app.route('/exercise_library')
+@login_required
+@teacher_required
+def exercise_library():
+    try:
+        # Récupérer les classes de l'enseignant pour le filtre
+        teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
+        
+        # Récupérer tous les exercices créés par l'enseignant
+        exercises = Exercise.query.filter_by(created_by=current_user.id).all()
+        
+        return render_template('exercise_library.html',
+                             exercises=exercises,
+                             teacher_classes=teacher_classes)
+    except Exception as e:
+        logger.error(f"Erreur lors de l'accès à la bibliothèque d'exercices: {str(e)}")
+        flash("Une erreur s'est produite lors de l'accès à la bibliothèque.", "error")
+        return redirect(url_for('teacher_dashboard'))
 
 @app.route('/classes/join', methods=['POST'])
 @login_required
@@ -235,13 +282,13 @@ def join_class():
         flash('Seuls les étudiants peuvent rejoindre une classe.', 'danger')
         return redirect(url_for('student_dashboard'))
     
-    class_code = request.form.get('class_code')
-    if not class_code:
+    invite_code = request.form.get('invite_code')
+    if not invite_code:
         flash('Le code de la classe est requis.', 'danger')
         return redirect(url_for('student_dashboard'))
     
     # Trouver la classe avec ce code
-    class_obj = Class.query.filter_by(invite_code=class_code).first()
+    class_obj = Class.query.filter_by(invite_code=invite_code).first()
     if not class_obj:
         flash('Code de classe invalide.', 'danger')
         return redirect(url_for('student_dashboard'))
@@ -276,6 +323,7 @@ def join_class():
 
 @app.route('/classes/create', methods=['GET', 'POST'])
 @login_required
+@teacher_required
 def create_class():
     form = ClassForm()
     if request.method == 'POST':
@@ -376,129 +424,159 @@ def create_course(class_id):
 @login_required
 @teacher_required
 def create_exercise():
+    logger.info("Accès à la route create_exercise")
     form = ExerciseForm()
     
-    # Récupérer le class_id de l'URL
-    class_id = request.args.get('class_id', type=int)
-    logger.info(f"Class ID from URL: {class_id}")
+    # Récupérer les classes de l'enseignant
+    teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
+    logger.info(f"Classes de l'enseignant trouvées: {len(teacher_classes)}")
     
-    # Récupérer toutes les classes de l'enseignant avec leurs cours
-    if class_id:
-        # Si class_id est fourni, ne récupérer que cette classe
-        teacher_classes = Class.query.filter_by(id=class_id, teacher_id=current_user.id).all()
-        if not teacher_classes:
-            flash('Classe non trouvée ou non autorisée.', 'danger')
-            return redirect(url_for('teacher_dashboard'))
-    else:
-        # Sinon, récupérer toutes les classes de l'enseignant
-        teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
-    
-    # Log pour le débogage
-    logger.info(f"Classes de l'enseignant: {[c.name for c in teacher_classes]}")
+    # Préparer les choix pour le champ course_id
+    choices = []
     for class_ in teacher_classes:
-        logger.info(f"Cours dans {class_.name}: {[c.title for c in class_.courses]}")
+        for course in class_.courses:
+            choices.append((course.id, f"{class_.name} - {course.title}"))
+    form.course_id.choices = choices
+    logger.info(f"Nombre de cours disponibles: {len(choices)}")
     
     if request.method == 'POST':
-        logger.info("=== Début de la création d'exercice ===")
-        logger.info(f"Données du formulaire: {request.form}")
+        logger.info("Réception d'une requête POST pour créer un exercice")
+        logger.info(f"Données du formulaire reçues: {request.form}")
+        logger.info(f"Fichiers reçus: {request.files}")
         
         try:
-            # Récupérer le course_id du formulaire
-            course_id = request.form.get('course_id')
-            logger.info(f"Course ID reçu: {course_id}")
+            # Vérifier les champs requis
+            required_fields = ['title', 'course_id', 'exercise_type', 'points']
+            for field in required_fields:
+                if not request.form.get(field):
+                    logger.error(f"Champ requis manquant: {field}")
+                    flash(f'Le champ {field} est requis.', 'danger')
+                    return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
             
-            if not course_id:
-                logger.warning("Aucun course_id fourni")
-                flash('Veuillez sélectionner un cours.', 'danger')
-                return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
-
-            # Vérifier que le cours existe et appartient à l'enseignant
-            course = Course.query.get(course_id)
-            if not course:
-                logger.warning(f"Cours {course_id} non trouvé")
-                flash('Cours invalide.', 'danger')
-                return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
-                
-            if course.class_.teacher_id != current_user.id:
-                logger.warning(f"Le cours {course_id} n'appartient pas à l'enseignant {current_user.id}")
-                flash('Cours invalide.', 'danger')
-                return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
-
-            logger.info(f"Cours valide: {course.title}")
-
-            # Créer l'exercice
+            # Créer l'exercice de base
             exercise = Exercise(
-                title=request.form.get('title'),
-                description=request.form.get('description'),
-                subject=request.form.get('subject'),
-                level=request.form.get('level'),
-                difficulty=request.form.get('difficulty'),
-                points=request.form.get('points'),
-                exercise_type=request.form.get('exercise_type'),
-                course_id=course_id,
+                title=request.form['title'],
+                description=request.form['description'],
+                subject=request.form['subject'],
+                level=request.form['level'],
+                difficulty=request.form['difficulty'],
+                points=int(request.form['points']),
+                exercise_type=request.form['exercise_type'],
+                course_id=int(request.form['course_id']),
                 created_by=current_user.id
             )
+            logger.info(f"Exercice créé avec les données de base: {exercise.__dict__}")
             
-            logger.info(f"Exercice créé: {exercise.title} (type: {exercise.exercise_type})")
+            exercise_type = request.form['exercise_type']
+            logger.info(f"Type d'exercice: {exercise_type}")
             
-            # Ajouter les trous si c'est un exercice à trous
-            if exercise.exercise_type == 'holes':
-                holes_data = request.form.get('holes_data')
-                logger.info(f"Données des trous reçues: {holes_data}")
+            if exercise_type == 'QCM':
+                # Traiter les questions QCM
+                questions = []
+                question_texts = request.form.getlist('question_text[]')
+                question_images = request.files.getlist('question_image[]')
                 
-                if not holes_data:
-                    logger.warning("Aucune donnée de trous reçue pour un exercice de type 'holes'")
-                    raise ValueError("Données des trous manquantes")
+                logger.info(f"Nombre de questions reçues: {len(question_texts)}")
                 
-                try:
-                    holes = json.loads(holes_data)
-                    logger.info(f"Nombre de trous: {len(holes)}")
+                for i in range(len(question_texts)):
+                    logger.info(f"Traitement de la question {i}")
+                    question_text = question_texts[i]
+                    question = Question(text=question_text)
                     
-                    if not holes:
-                        raise ValueError("Au moins un trou est requis")
+                    # Gérer l'image de la question si présente
+                    if i < len(question_images) and question_images[i].filename:
+                        image_file = question_images[i]
+                        logger.info(f"Image trouvée pour la question {i}: {image_file.filename}")
+                        
+                        # Créer le dossier uploads s'il n'existe pas
+                        upload_folder = os.path.join(app.static_folder, 'uploads')
+                        os.makedirs(upload_folder, exist_ok=True)
+                        
+                        # Sauvegarder l'image
+                        filename = secure_filename(image_file.filename)
+                        image_path = os.path.join('uploads', filename)
+                        full_path = os.path.join(app.static_folder, 'uploads', filename)
+                        image_file.save(full_path)
+                        question.image = f'uploads/{filename}'
+                        logger.info(f"Image sauvegardée: {full_path}")
                     
-                    for i, hole_data in enumerate(holes):
-                        # Valider les données du trou
-                        if not hole_data.get('correct_answer'):
-                            raise ValueError(f"Réponse manquante pour le trou #{i+1}")
-                        
-                        hole = TextHole(
-                            text_before=hole_data.get('text_before', ''),
-                            correct_answer=hole_data['correct_answer'],
-                            text_after=hole_data.get('text_after', '')
-                        )
-                        logger.info(f"Trou #{i+1} créé: {hole.correct_answer}")
-                        exercise.text_holes.append(hole)
-                        
-                except json.JSONDecodeError as e:
-                    logger.error(f"Erreur de décodage JSON des trous: {e}")
-                    raise ValueError("Format des données des trous invalide")
-
+                    # Traiter les options
+                    option_texts = request.form.getlist(f'option_text_{i}[]')
+                    correct_answer = request.form.get(f'correct_answer_{i}')
+                    
+                    logger.info(f"Options pour la question {i}: {option_texts}")
+                    logger.info(f"Réponse correcte pour la question {i}: {correct_answer}")
+                    
+                    # S'assurer que correct_answer est un entier
+                    try:
+                        correct_answer = int(correct_answer)
+                    except (TypeError, ValueError):
+                        logger.error(f"Valeur invalide pour correct_answer: {correct_answer}")
+                        correct_answer = 0
+                    
+                    for j, option_text in enumerate(option_texts):
+                        is_correct = j == correct_answer
+                        logger.info(f"Option {j}: {option_text} (correcte: {is_correct})")
+                        choice = Choice(text=option_text, is_correct=is_correct)
+                        question.choices.append(choice)
+                    
+                    questions.append(question)
+                
+                exercise.questions = questions
+                logger.info(f"Total des questions créées: {len(questions)}")
+                
+            elif exercise_type == 'text_holes':
+                # Traiter les trous de texte
+                holes = []
+                text_before_list = request.form.getlist('text_before[]')
+                hole_answers = request.form.getlist('hole_answer[]')
+                text_after_list = request.form.getlist('text_after[]')
+                hole_images = request.files.getlist('hole_image[]')
+                
+                logger.info(f"Nombre de trous reçus: {len(hole_answers)}")
+                
+                for i in range(len(hole_answers)):
+                    text_before = text_before_list[i] if i < len(text_before_list) else ''
+                    correct_answer = hole_answers[i]
+                    text_after = text_after_list[i] if i < len(text_after_list) else ''
+                    
+                    hole = TextHole(
+                        text_before=text_before,
+                        correct_answer=correct_answer,
+                        text_after=text_after
+                    )
+                    
+                    # Gérer l'image du trou si présente
+                    if i < len(hole_images) and hole_images[i].filename:
+                        image_file = hole_images[i]
+                        logger.info(f"Image trouvée pour le trou {i}: {image_file.filename}")
+                        filename = secure_filename(image_file.filename)
+                        image_path = os.path.join('uploads', filename)
+                        full_path = os.path.join(app.static_folder, 'uploads', filename)
+                        image_file.save(full_path)
+                        hole.image = image_path
+                    
+                    holes.append(hole)
+                    logger.info(f"Trou {i} créé: {hole.__dict__}")
+                
+                exercise.text_holes = holes
+                logger.info(f"Total des trous créés: {len(holes)}")
+            
+            logger.info("Tentative de sauvegarde dans la base de données")
             db.session.add(exercise)
             db.session.commit()
-            logger.info(f"Exercice {exercise.id} enregistré avec succès")
             
-            # Rediriger vers le cours si class_id est fourni
-            if class_id:
-                flash('Exercice créé avec succès!', 'success')
-                return redirect(url_for('view_class', class_id=class_id))
-            else:
-                flash('Exercice créé avec succès!', 'success')
-                return redirect(url_for('exercise_library'))
+            logger.info(f"Exercice créé avec succès: ID={exercise.id}")
+            flash('Exercice créé avec succès!', 'success')
+            return redirect(url_for('exercise_library'))
             
-        except ValueError as ve:
-            db.session.rollback()
-            logger.error(f"Erreur de validation: {str(ve)}")
-            flash(str(ve), 'danger')
-            return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Erreur inattendue lors de la création de l'exercice: {str(e)}")
+            logger.error(f"Erreur lors de la création de l'exercice: {str(e)}")
+            logger.exception("Détails de l'erreur:")
             flash('Une erreur est survenue lors de la création de l\'exercice.', 'danger')
             return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
-        finally:
-            logger.info("=== Fin de la création d'exercice ===")
-
+    
     return render_template('create_exercise.html', form=form, teacher_classes=teacher_classes)
 
 @app.route('/exercise/<int:exercise_id>/edit_holes', methods=['GET', 'POST'])
@@ -666,58 +744,77 @@ def edit_qcm(exercise_id):
     
     return render_template('edit_qcm.html', exercise=exercise)
 
-@app.route('/exercise_library')
-@login_required
-def exercise_library():
-    exercises = Exercise.query.all()  # Récupérer tous les exercices pour l'instant
-    teacher_classes = []
-    if current_user.is_teacher:
-        teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
-    return render_template('exercise_library.html', exercises=exercises, teacher_classes=teacher_classes)
-
 @app.route('/api/filter_exercises')
 @login_required
 def filter_exercises():
-    subject = request.args.get('subject')
-    level = request.args.get('level')
-    class_id = request.args.get('class_id')
-    exercise_type = request.args.get('type')
-    
-    logger.info(f"Filtrage des exercices - Paramètres reçus: subject={subject}, level={level}, class_id={class_id}, type={exercise_type}")
-    
-    query = Exercise.query
-    
-    if subject:
-        logger.debug(f"Filtrage par matière: {subject}")
-        query = query.filter_by(subject=subject)
-    if level:
-        logger.debug(f"Filtrage par niveau: {level}")
-        query = query.filter_by(level=level)
-    if class_id:
-        logger.debug(f"Filtrage par classe: {class_id}")
-        query = query.join(ClassExercise).filter(ClassExercise.class_id == class_id)
-    if exercise_type:
-        logger.debug(f"Filtrage par type: {exercise_type}")
-        query = query.filter_by(exercise_type=exercise_type)
-    
-    exercises = query.order_by(Exercise.created_at.desc()).all()
-    logger.info(f"Nombre d'exercices trouvés: {len(exercises)}")
-    
-    exercise_list = []
-    for ex in exercises:
-        exercise_data = {
-            'id': ex.id,
-            'title': ex.title,
-            'description': ex.description,
-            'subject': ex.subject,
-            'level': ex.level,
-            'type': ex.exercise_type,
-            'created_at': ex.created_at.strftime('%d/%m/%Y') if ex.created_at else None
-        }
-        exercise_list.append(exercise_data)
-        logger.debug(f"Exercice ajouté à la liste: ID={ex.id}, Titre={ex.title}")
-    
-    return jsonify(exercise_list)
+    try:
+        logger.info("Début du filtrage des exercices")
+        
+        # Récupérer les paramètres de filtrage
+        subject = request.args.get('subject')
+        level = request.args.get('level')
+        exercise_type = request.args.get('type')
+        
+        # Construire la requête de base
+        query = Exercise.query
+        
+        # Appliquer les filtres si présents
+        if subject:
+            # Gérer à la fois les anciennes et nouvelles catégories
+            if '_' in subject:  # Nouvelle catégorie
+                query = query.filter(Exercise.subject == subject)
+            else:  # Ancienne catégorie
+                # Obtenir toutes les sous-catégories correspondantes
+                subject_prefix = f"{subject}_"
+                query = query.filter(
+                    db.or_(
+                        Exercise.subject == subject,
+                        Exercise.subject.like(f"{subject}_%")
+                    )
+                )
+        
+        if level:
+            query = query.filter(Exercise.level == level)
+            
+        if exercise_type:
+            query = query.filter(Exercise.exercise_type == exercise_type)
+            
+        # Exécuter la requête
+        exercises = query.all()
+        logger.info(f"Nombre d'exercices trouvés: {len(exercises)}")
+        
+        # Préparer la liste des exercices
+        exercise_list = []
+        for ex in exercises:
+            exercise_data = {
+                'id': ex.id,
+                'title': ex.title,
+                'description': ex.description,
+                'subject': get_display_subject(ex.subject),
+                'level': ex.level,
+                'type': ex.exercise_type,
+                'points': ex.points,
+                'difficulty': ex.difficulty,
+                'created_at': ex.created_at.strftime('%d/%m/%Y') if ex.created_at else None
+            }
+            exercise_list.append(exercise_data)
+            logger.debug(f"Exercice ajouté à la liste: ID={ex.id}, Titre={ex.title}")
+        
+        return jsonify(exercise_list)
+        
+    except Exception as e:
+        logger.error(f"Erreur lors du filtrage des exercices: {str(e)}")
+        return jsonify({'error': 'Une erreur est survenue lors du filtrage des exercices'}), 500
+
+def get_display_subject(subject):
+    # Mapping des anciennes catégories vers les nouvelles
+    subject_mapping = {
+        'mathematiques': 'mathematiques_nombres',
+        'francais': 'francais_grammaire',
+        'eveil': 'eveil_histoire',
+        'sciences': 'sciences_biologie'
+    }
+    return subject_mapping.get(subject, subject)
 
 @app.route('/exercise/<int:exercise_id>/add_to_class', methods=['POST'])
 @login_required
@@ -769,10 +866,10 @@ def edit_course(course_id):
         flash('Vous n\'avez pas l\'autorisation de modifier ce cours.', 'danger')
         return redirect(url_for('view_class', class_id=class_.id))
     
-    if request.method == 'POST':
-        course.title = request.form['title']
-        course.description = request.form['description']
-        course.content = request.form['content']
+    form = CourseForm(obj=course)
+    
+    if form.validate_on_submit():
+        form.populate_obj(course)
         
         # Gérer les fichiers uploadés
         if 'files' in request.files:
@@ -796,12 +893,12 @@ def edit_course(course_id):
             db.session.commit()
 
         log_request_info(request)
-        log_form_data(request.form.to_dict(), 'edit_course')
+        log_form_data(form.data, 'edit_course')
         logger.info(f"Course updated successfully with ID: {course_id}")
         flash('Le cours a été mis à jour avec succès.', 'success')
         return redirect(url_for('view_course', course_id=course.id))
     
-    return render_template('create_course.html', course=course, class_=class_, edit_mode=True)
+    return render_template('create_course.html', form=form, course=course, class_=class_, edit_mode=True)
 
 @app.route('/course/file/<int:file_id>')
 @login_required
@@ -958,12 +1055,29 @@ def view_exercise(exercise_id):
     logger.info(f"Tentative d'accès à l'exercice {exercise_id} par l'utilisateur {current_user.id}")
     
     try:
+        # Charger l'exercice avec toutes ses relations
         exercise = Exercise.query.options(
             joinedload(Exercise.questions).joinedload(Question.choices),
             joinedload(Exercise.text_holes),
             joinedload(Exercise.submissions).joinedload(ExerciseSubmission.submitting_student)
         ).get_or_404(exercise_id)
+        
         logger.debug(f"Exercice trouvé: ID={exercise.id}, Titre={exercise.title}, Type={exercise.exercise_type}")
+        
+        # Créer un formulaire vide pour le jeton CSRF
+        form = ExerciseForm()
+        
+        # Charger les questions et les réponses pour les QCM
+        if exercise.exercise_type == 'QCM':
+            questions = exercise.questions
+            for question in questions:
+                logger.debug(f"Question chargée: {question.text}")
+                logger.debug(f"Nombre de choix: {len(question.choices)}")
+        
+        # Charger les trous de texte pour les exercices de type text_holes
+        elif exercise.exercise_type == 'text_holes':
+            text_holes = exercise.text_holes
+            logger.debug(f"Nombre de trous de texte: {len(text_holes)}")
         
         # Vérifier si l'utilisateur est inscrit au cours
         is_enrolled = False
@@ -988,10 +1102,26 @@ def view_exercise(exercise_id):
             else:
                 logger.debug("Aucune soumission trouvée pour cet utilisateur")
         
+        # Récupérer toutes les soumissions si c'est un enseignant
+        submissions = None
+        if current_user.role == 'teacher':
+            submissions = ExerciseSubmission.query.filter_by(
+                exercise_id=exercise_id
+            ).join(User, User.id == ExerciseSubmission.student_id).order_by(ExerciseSubmission.submitted_at.desc()).all()
+            logger.debug(f"Nombre de soumissions trouvées: {len(submissions) if submissions else 0}")
+        
+        is_teacher = current_user.role == 'teacher'
+        
+        # Passer toutes les données nécessaires au template
         return render_template('view_exercise.html',
                           exercise=exercise,
+                          questions=exercise.questions if exercise.exercise_type == 'QCM' else None,
+                          text_holes=exercise.text_holes if exercise.exercise_type == 'text_holes' else None,
+                          is_teacher=is_teacher,
                           is_enrolled=is_enrolled,
-                          user_submission=user_submission)
+                          user_submission=user_submission,
+                          submissions=submissions,
+                          form=form)
                           
     except Exception as e:
         logger.error(f"Erreur lors de l'accès à l'exercice {exercise_id}: {str(e)}")
@@ -1011,51 +1141,68 @@ def submit_exercise(exercise_id):
         ).first()
         
         if not enrollment:
-            logger.warning(f"Étudiant {current_user.id} non inscrit au cours pour l'exercice {exercise_id}")
             flash("Vous n'êtes pas inscrit à ce cours.", 'danger')
             return redirect(url_for('view_exercise', exercise_id=exercise_id))
-
-        # Récupérer les réponses
-        answers = {}
-        score = 0
-        total_holes = len(exercise.text_holes)
-        correct_answers = 0
-
-        logger.info("Traitement des réponses...")
-        for hole in exercise.text_holes:
-            answer_key = f'hole_{hole.id}'
-            student_answer = request.form.get(answer_key, '').strip().lower()
-            correct_answer = hole.correct_answer.strip().lower()
-            logger.debug(f"Trou {hole.id}: réponse = {student_answer}, réponse correcte = {correct_answer}")
             
-            if student_answer == correct_answer:
-                correct_answers += 1
-            answers[hole.id] = student_answer
-
-        if total_holes > 0:
-            score = (correct_answers / total_holes) * 100
-            logger.info(f"Score calculé: {score}%")
-
-        # Créer une nouvelle soumission avec le score calculé
+        # Vérifier si l'exercice est déjà soumis
+        existing_submission = ExerciseSubmission.query.filter_by(
+            student_id=current_user.id,
+            exercise_id=exercise_id
+        ).first()
+        
+        if existing_submission:
+            flash("Vous avez déjà soumis cet exercice.", 'warning')
+            return redirect(url_for('view_exercise', exercise_id=exercise_id))
+            
+        score = 0
+        total_questions = 0
+        answers = {}
+        
+        if exercise.exercise_type == 'QCM':
+            # Traitement des réponses QCM
+            for question in exercise.questions:
+                total_questions += 1
+                answer_key = f'answer_{question.id}'
+                if answer_key in request.form:
+                    selected_choice_id = int(request.form[answer_key])
+                    selected_choice = Choice.query.get(selected_choice_id)
+                    if selected_choice and selected_choice.is_correct:
+                        score += 1
+                    answers[str(question.id)] = selected_choice_id
+                    
+        elif exercise.exercise_type == 'text_holes':
+            # Traitement des réponses texte à trous
+            total_questions = len(exercise.text_holes)
+            for i, hole in enumerate(exercise.text_holes):
+                answer_key = f'answer_{i}'
+                if answer_key in request.form:
+                    student_answer = request.form[answer_key].strip()
+                    if student_answer.lower() == hole.correct_answer.lower():
+                        score += 1
+                    answers[str(i)] = student_answer
+        
+        # Calculer le score final en pourcentage
+        final_score = (score / total_questions * 100) if total_questions > 0 else 0
+        
+        # Créer la soumission
         submission = ExerciseSubmission(
             student_id=current_user.id,
             exercise_id=exercise_id,
-            submitted_at=datetime.utcnow(),
-            score=score,
-            answers=str(answers)
+            answers=answers,
+            score=final_score,
+            submitted_at=datetime.utcnow()
         )
         
         db.session.add(submission)
         db.session.commit()
-        logger.info(f"Soumission exercice sauvegardée - Étudiant: {current_user.id}, Exercise: {exercise_id}, Score: {score}")
-
-        flash(f'Exercice soumis avec succès! Score: {score:.1f}%', 'success')
+        
+        flash(f'Exercice soumis avec succès! Score: {final_score:.1f}%', 'success')
         return redirect(url_for('view_exercise', exercise_id=exercise_id))
-
+        
     except Exception as e:
         db.session.rollback()
         logger.error(f"Erreur lors de la soumission de l'exercice: {str(e)}")
-        flash('Une erreur est survenue lors de la soumission.', 'danger')
+        flash("Une erreur s'est produite lors de la soumission de l'exercice.", 'danger')
         return redirect(url_for('view_exercise', exercise_id=exercise_id))
 
 @app.route('/exercises/<int:exercise_id>/edit', methods=['GET', 'POST'])
@@ -1069,9 +1216,18 @@ def edit_exercise(exercise_id):
     # Vérifier que l'utilisateur est le professeur de la classe
     if current_user.id != class_.teacher_id:
         flash('Vous n\'êtes pas autorisé à modifier cet exercice.', 'danger')
-        return redirect(url_for('view_exercise', exercise_id=exercise_id))
+        return redirect(url_for('view_exercise', exercise_id=exercise.id))
     
     form = ExerciseForm(obj=exercise)
+    
+    # Définir les choix pour le champ course_id
+    teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
+    available_courses = []
+    for teacher_class in teacher_classes:
+        courses = Course.query.filter_by(class_id=teacher_class.id).all()
+        available_courses.extend(courses)
+    
+    form.course_id.choices = [(c.id, f"{c.title} ({c.class_.name})") for c in available_courses]
     
     if form.validate_on_submit():
         try:
@@ -1577,21 +1733,23 @@ def debug_submissions(exercise_id):
     
     return jsonify(debug_info)
 
+
+
 if __name__ == '__main__':
     with app.app_context():
+        # Créer les tables si elles n'existent pas
         db.create_all()
         
-        # Vérifier si l'utilisateur admin existe déjà
-        admin = User.query.filter_by(username='admin').first()
-        if not admin:
-            admin = User(
-                username='admin',
-                email='jematali@gmail.com',
+        # Créer un utilisateur enseignant par défaut si aucun n'existe
+        if not User.query.filter_by(role='teacher').first():
+            teacher = User(
+                username='Prof. Mr Zahiri',
+                email='zahiri@example.com',
                 role='teacher'
             )
-            admin.set_password('admin')
-            db.session.add(admin)
+            teacher.set_password('password123')
+            db.session.add(teacher)
             db.session.commit()
-            print("Utilisateur admin créé avec succès!")
             
-    app.run(debug=True)
+        # Démarrer l'application
+        app.run(debug=True)

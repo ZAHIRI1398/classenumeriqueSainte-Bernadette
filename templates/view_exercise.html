@@ -1,135 +1,137 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container mt-4">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Accueil</a></li>
-            {% if exercise.course %}
-                {% if exercise.course.class_ %}
-                <li class="breadcrumb-item"><a href="{{ url_for('view_class', class_id=exercise.course.class_.id) }}">{{ exercise.course.class_.name }}</a></li>
-                {% endif %}
-                <li class="breadcrumb-item"><a href="{{ url_for('view_course', course_id=exercise.course.id) }}">{{ exercise.course.title }}</a></li>
-            {% else %}
-                <li class="breadcrumb-item"><a href="{{ url_for('exercise_library') }}">Bibliothèque d'exercices</a></li>
-            {% endif %}
-            <li class="breadcrumb-item active" aria-current="page">{{ exercise.title }}</li>
-        </ol>
-    </nav>
-
-    <h2>{{ exercise.title }}</h2>
-    
-    {% if exercise.description %}
-    <p class="lead">{{ exercise.description }}</p>
-    {% endif %}
-
-    {% if exercise.image_path %}
-    <div class="mb-4">
-        <img src="{{ url_for('static', filename=exercise.image_path) }}" 
-             class="img-fluid" alt="Image de l'exercice">
-    </div>
-    {% endif %}
-
-    <div class="card mb-4">
-        <div class="card-body">
-            <h4>Détails de l'exercice</h4>
-            <p><strong>Type :</strong> 
-                {% if exercise.exercise_type == 'qcm' %}QCM
-                {% elif exercise.exercise_type == 'holes' %}Texte à trous
-                {% elif exercise.exercise_type == 'vrai_faux' %}Vrai/Faux
-                {% elif exercise.exercise_type == 'texte_libre' %}Texte libre
-                {% elif exercise.exercise_type == 'correspondance' %}Correspondance
-                {% elif exercise.exercise_type == 'ordre' %}Ordre
-                {% elif exercise.exercise_type == 'calcul' %}Calcul mathématique
-                {% elif exercise.exercise_type == 'polygon' %}Polygone
-                {% elif exercise.exercise_type == 'triangle' %}Triangle
-                {% endif %}
-            </p>
-            <p><strong>Difficulté :</strong> {{ exercise.difficulty }}</p>
-            <p><strong>Points :</strong> {{ exercise.points }}</p>
-            <p><strong>Matière :</strong> {{ exercise.subject }}</p>
-            <p><strong>Niveau :</strong> {{ exercise.level }}</p>
-            
-            {% if current_user.role == 'teacher' %}
-            <div class="mt-3">
-                <a href="{{ url_for('edit_exercise', exercise_id=exercise.id) }}" class="btn btn-primary">
-                    <i class="fas fa-edit"></i> Modifier l'exercice
-                </a>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
+<div class="container">
     {% if current_user.role == 'teacher' %}
-        {% if exercise.exercise_type == 'qcm' %}
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h4>Questions de l'exercice</h4>
-                    {% if exercise.questions %}
-                        {% for question in exercise.questions|sort(attribute='id') %}
-                        <div class="card mb-3">
-                            <div class="card-body">
-                                <h5 class="card-title">Question {{ loop.index }}</h5>
-                                <p class="card-text">{{ question.text }}</p>
-                                <ul class="list-group">
-                                    {% for choice in question.choices|sort(attribute='id') %}
-                                    <li class="list-group-item {% if choice.is_correct %}list-group-item-success{% endif %}">
-                                        {{ choice.text }}
-                                        {% if choice.is_correct %}
-                                        <span class="badge bg-success float-end">Correct</span>
-                                        {% endif %}
-                                    </li>
-                                    {% endfor %}
-                                </ul>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="alert alert-info">
-                            Aucune question n'a encore été ajoutée à cet exercice.
-                            <div class="mt-2">
-                                <a href="{{ url_for('edit_exercise', exercise_id=exercise.id) }}" class="btn btn-primary">
-                                    <i class="fas fa-plus"></i> Ajouter des questions
-                                </a>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>{{ exercise.title }}</h1>
+            <div class="btn-group">
+                <a href="{{ url_for('edit_exercise', exercise_id=exercise.id) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-edit"></i> Modifier
+                </a>
+                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                    <i class="fas fa-trash"></i> Supprimer
+                </button>
             </div>
-        {% elif exercise.exercise_type == 'holes' %}
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h4>Texte à trous</h4>
-                    {% if exercise.text_holes %}
-                        {% for hole in exercise.text_holes|sort(attribute='id') %}
-                        <div class="hole-group mb-3">
-                            <div class="d-flex align-items-center">
-                                <span>{{ hole.text_before }}</span>
-                                <span class="badge bg-primary mx-2">{{ hole.correct_answer }}</span>
-                                <span>{{ hole.text_after }}</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <div class="alert alert-info">
-                            Aucun trou n'a encore été ajouté à cet exercice.
-                            <div class="mt-2">
-                                <a href="{{ url_for('edit_exercise', exercise_id=exercise.id) }}" class="btn btn-primary">
-                                    <i class="fas fa-plus"></i> Ajouter des trous
-                                </a>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-        {% endif %}
+        </div>
 
-        {% if exercise.submissions %}
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h4 class="mb-0">Soumissions ({{ exercise.submissions|length }})</h4>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Informations de l'exercice</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Matière:</strong> {{ exercise.subject }}</p>
+                        <p><strong>Niveau:</strong> {{ exercise.level }}</p>
+                        <p><strong>Type:</strong> {{ exercise.exercise_type }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Points:</strong> {{ exercise.points }}</p>
+                        <p><strong>Difficulté:</strong> {{ exercise.difficulty }}</p>
+                        <p><strong>Date de création:</strong> {{ exercise.created_at.strftime('%d/%m/%Y') }}</p>
+                    </div>
                 </div>
-                <div class="card-body">
+                <div class="mt-3">
+                    <h6>Description:</h6>
+                    <p>{{ exercise.description }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Contenu de l'exercice</h5>
+            </div>
+            <div class="card-body">
+                {% if exercise.exercise_type == 'QCM' %}
+                    {% for question in exercise.questions %}
+                        <div class="mb-4">
+                            <h6>Question {{ loop.index }}:</h6>
+                            <p>{{ question.text }}</p>
+                            {% if question.image %}
+                                <img src="{{ url_for('static', filename=question.image) }}" 
+                                     class="img-fluid mb-3" alt="Image de la question">
+                            {% endif %}
+                            <div class="list-group">
+                                {% for choice in question.choices %}
+                                    <div class="list-group-item">
+                                        {% if is_teacher %}
+                                            <div class="d-flex align-items-center">
+                                                <span class="me-2">
+                                                    <i class="fas {% if choice.is_correct %}fa-check text-success{% else %}fa-times text-danger{% endif %}"></i>
+                                                </span>
+                                                {{ choice.text }}
+                                            </div>
+                                        {% else %}
+                                            <div class="form-check">
+                                                <input type="radio" class="form-check-input" 
+                                                       name="answer_{{ question.id }}" 
+                                                       value="{{ choice.id }}" 
+                                                       {% if user_submission and choice.id in user_submission.answers %}checked{% endif %}
+                                                       {% if user_submission %}disabled{% endif %}>
+                                                <label class="form-check-label">{{ choice.text }}</label>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% elif exercise.exercise_type == 'text_holes' %}
+                    <div class="text-content mb-4">
+                        <form method="POST" action="{{ url_for('submit_exercise', exercise_id=exercise.id) }}">
+                            {{ form.hidden_tag() }}
+                            {% for hole in exercise.text_holes %}
+                                <div class="mb-4">
+                                    <div class="question-text">{{ hole.text_before }}</div>
+                                    {% if is_teacher %}
+                                        <div class="answer mt-2">
+                                            <span class="badge bg-success">{{ hole.correct_answer }}</span>
+                                        </div>
+                                    {% else %}
+                                        <div class="answer mt-2">
+                                            <input type="text" class="form-control" 
+                                                   style="width: 150px;"
+                                                   name="answer_{{ loop.index0 }}"
+                                                   {% if user_submission %}
+                                                       value="{{ user_submission.answers[loop.index0] }}"
+                                                       disabled
+                                                   {% endif %}
+                                                   required>
+                                            <span class="ms-2">{{ hole.text_after }}</span>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                            
+                            {% if not is_teacher and not user_submission %}
+                                <div class="mt-4">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-check"></i> Soumettre
+                                    </button>
+                                </div>
+                            {% endif %}
+                        </form>
+                    </div>
+                {% endif %}
+
+                {% if not is_teacher and not user_submission %}
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-paper-plane"></i> Soumettre
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Soumissions des élèves</h5>
+            </div>
+            <div class="card-body">
+                {% if submissions %}
                     <div class="table-responsive">
                         <table class="table">
                             <thead>
@@ -137,114 +139,147 @@
                                     <th>Élève</th>
                                     <th>Date</th>
                                     <th>Score</th>
+                                    <th>Commentaire</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for submission in exercise.submissions %}
-                                <tr>
-                                    <td>{{ submission.submitting_student.username }}</td>
-                                    <td>{{ submission.submitted_at.strftime('%d/%m/%Y') }}</td>
-                                    <td>
-                                        {% if submission.score is not none %}
-                                            {{ "%.1f"|format(submission.score) }}%
-                                        {% else %}
-                                            En attente
-                                        {% endif %}
-                                    </td>
-                                </tr>
+                                {% for submission in submissions %}
+                                    <tr>
+                                        <td>{{ submission.submitting_student.username }}</td>
+                                        <td>{{ submission.submitted_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                                        <td>{{ submission.score }}/{{ exercise.points }}</td>
+                                        <td>{{ submission.feedback if submission.feedback else '' }}</td>
+                                        <td>
+                                            <a href="{{ url_for('grade_submission', exercise_id=exercise.id, submission_id=submission.id) }}" 
+                                               class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-eye"></i> Voir
+                                            </a>
+                                        </td>
+                                    </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                {% else %}
+                    <p class="text-muted">Aucune soumission pour le moment.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Modal de suppression -->
+        <div class="modal fade" id="deleteModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Confirmer la suppression</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        Êtes-vous sûr de vouloir supprimer cet exercice ? Cette action est irréversible.
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                        <form action="{{ url_for('delete_exercise', exercise_id=exercise.id) }}" method="POST" class="d-inline">
+                            {{ form.hidden_tag() }}
+                            <button type="submit" class="btn btn-danger">Supprimer</button>
+                        </form>
+                    </div>
                 </div>
             </div>
-        {% else %}
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i> Aucune soumission n'a encore été reçue pour cet exercice.
-            </div>
-        {% endif %}
-    {% endif %}
+        </div>
 
-    {% if not current_user.role == 'teacher' %}
-        {% if not is_enrolled %}
-            <div class="alert alert-warning">
-                Vous devez être inscrit dans cette classe pour soumettre cet exercice.
-            </div>
-        {% else %}
-            {% if submission %}
-                <div class="card mb-4">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Votre dernière soumission</h5>
+    {% else %}
+        <div class="container py-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="mb-0">{{ exercise.title }}</h1>
+                    <div class="mt-2">
+                        <span class="badge bg-primary">{{ exercise.points }} pts</span>
+                        <span class="badge bg-secondary">{{ exercise.subject }}</span>
+                        <span class="badge bg-info">{{ exercise.level }}</span>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <p><strong>Date :</strong> {{ submission.submitted_at.strftime('%d/%m/%Y %H:%M') }}</p>
+                </div>
+                <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Retour
+                </a>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p class="lead">{{ exercise.description }}</p>
+                </div>
+            </div>
+
+            <form method="POST" action="{{ url_for('submit_exercise', exercise_id=exercise.id) }}">
+                {{ form.hidden_tag() }}
+                {% if exercise.exercise_type == 'QCM' and questions %}
+                    {% for question in questions %}
+                        <div class="card mb-4">
+                            <div class="card-body">
+                                <h5>Question {{ loop.index }}:</h5>
+                                <p>{{ question.text }}</p>
+                                {% if question.image %}
+                                    <img src="{{ url_for('static', filename=question.image) }}" 
+                                         class="img-fluid mb-3" alt="Image de la question">
+                                {% endif %}
+                                <div class="list-group">
+                                    {% for option in question.choices %}
+                                        <label class="list-group-item">
+                                            <input type="radio" class="form-check-input me-2" 
+                                                   name="answer_{{ question.id }}" value="{{ option.id }}" required>
+                                            {{ option.text }}
+                                        </label>
+                                    {% endfor %}
+                                </div>
                             </div>
-                            <div class="col-md-6">
-                                {% if submission.score is not none %}
-                                    <p>
-                                        <strong>Score :</strong>
-                                        <span class="badge bg-{{ 'success' if submission.score >= 50 else 'warning' }} fs-5">
-                                            {{ "%.1f"|format(submission.score) }}%
-                                        </span>
-                                    </p>
-                                    {% if submission.feedback %}
-                                        <p><strong>Commentaire :</strong> {{ submission.feedback }}</p>
-                                    {% endif %}
-                                {% else %}
-                                    <p><span class="badge bg-info">En attente de correction</span></p>
+                        </div>
+                    {% endfor %}
+                {% elif exercise.exercise_type == 'text_holes' and text_holes %}
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <div class="text-content mb-4">
+                                {% for hole in text_holes %}
+                                    <div class="mb-4">
+                                        <div class="question-text">{{ hole.text_before }}</div>
+                                        {% if is_teacher %}
+                                            <div class="answer mt-2">
+                                                <span class="badge bg-success">{{ hole.correct_answer }}</span>
+                                            </div>
+                                        {% else %}
+                                            <div class="answer mt-2">
+                                                <input type="text" class="form-control" 
+                                                       style="width: 150px;"
+                                                       name="answer_{{ loop.index0 }}"
+                                                       {% if user_submission %}
+                                                           value="{{ user_submission.answers[loop.index0] }}"
+                                                           disabled
+                                                       {% endif %}
+                                                       required>
+                                                <span class="ms-2">{{ hole.text_after }}</span>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                {% endfor %}
+                                
+                                {% if not is_teacher and not user_submission %}
+                                    <div class="mt-4">
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-check"></i> Soumettre
+                                        </button>
+                                    </div>
                                 {% endif %}
                             </div>
                         </div>
                     </div>
+                {% endif %}
+                <div class="text-center">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-paper-plane"></i> Soumettre
+                    </button>
                 </div>
-            {% endif %}
-
-            {% if exercise.exercise_type == 'qcm' %}
-                <form method="POST" action="{{ url_for('submit_qcm', exercise_id=exercise.id) }}" class="mb-4">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    {% for question in exercise.questions|sort(attribute='id') %}
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <h5 class="card-title">Question {{ loop.index }}</h5>
-                            <p class="card-text">{{ question.text }}</p>
-                            {% for choice in question.choices|sort(attribute='id') %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" 
-                                       name="question_{{ question.id }}" 
-                                       id="choice_{{ choice.id }}" 
-                                       value="{{ choice.id }}" required>
-                                <label class="form-check-label" for="choice_{{ choice.id }}">
-                                    {{ choice.text }}
-                                </label>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                    <button type="submit" class="btn btn-primary">Soumettre</button>
-                </form>
-            {% elif exercise.exercise_type == 'holes' %}
-                <form method="POST" action="{{ url_for('submit_exercise', exercise_id=exercise.id) }}" class="mb-4">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    {% for hole in exercise.text_holes|sort(attribute='id') %}
-                    <div class="hole-group mb-3">
-                        <div class="d-flex align-items-center">
-                            <span>{{ hole.text_before }}</span>
-                            <input type="text" 
-                                   class="form-control mx-2" 
-                                   style="width: auto; min-width: 100px;"
-                                   name="answer_{{ hole.id }}" 
-                                   required>
-                            <span>{{ hole.text_after }}</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                    <button type="submit" class="btn btn-primary">Soumettre</button>
-                </form>
-            {% endif %}
-        {% endif %}
+            </form>
+        </div>
     {% endif %}
 </div>
 {% endblock %}

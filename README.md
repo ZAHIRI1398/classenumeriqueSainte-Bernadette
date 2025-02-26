@@ -89,6 +89,67 @@ http://localhost:5000
 4. Accéder aux exercices de la classe
 5. Réaliser les exercices
 
+## Utilisation de Git et GitHub
+
+### Configuration initiale de Git
+```bash
+# Configurer votre nom et email
+git config --global user.name "Votre Nom"
+git config --global user.email "votre.email@example.com"
+```
+
+### Commandes Git essentielles
+```bash
+# Vérifier l'état des fichiers
+git status
+
+# Ajouter des fichiers modifiés
+git add .                  # Ajouter tous les fichiers
+git add nomfichier.py      # Ajouter un fichier spécifique
+
+# Créer un commit
+git commit -m "Description des modifications"
+
+# Pousser les modifications vers GitHub
+git push origin main
+
+# Récupérer les dernières modifications
+git pull origin main
+
+# Créer une nouvelle branche
+git checkout -b nom-de-la-branche
+
+# Changer de branche
+git checkout nom-de-la-branche
+
+# Fusionner une branche
+git merge nom-de-la-branche
+```
+
+### Workflow Git typique
+1. Avant de commencer à travailler :
+```bash
+git pull origin main
+```
+
+2. Créer une nouvelle branche pour vos modifications :
+```bash
+git checkout -b feature/nouvelle-fonctionnalite
+```
+
+3. Faire vos modifications et les commiter :
+```bash
+git add .
+git commit -m "Description des modifications"
+```
+
+4. Pousser les modifications vers GitHub :
+```bash
+git push origin feature/nouvelle-fonctionnalite
+```
+
+5. Créer une Pull Request sur GitHub pour fusionner vos modifications
+
 ## Base de données
 
 La base de données SQLite contient les tables suivantes :

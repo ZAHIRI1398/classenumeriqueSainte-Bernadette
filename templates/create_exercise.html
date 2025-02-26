@@ -9,85 +9,96 @@
                     <h2 class="mb-0">Créer un nouvel exercice</h2>
                 </div>
                 <div class="card-body">
-                    <form method="POST" id="exercise-form">
+                    <form method="POST" action="{{ url_for('create_exercise') }}" id="exercise-form" enctype="multipart/form-data">
                         {{ form.csrf_token }}
-                        {% if class_id %}
-                        <input type="hidden" name="class_id" value="{{ class_id }}">
-                        {% endif %}
-                        {% if course_id %}
-                        <input type="hidden" name="course_id" value="{{ course_id }}">
-                        {% endif %}
                         
                         <div class="mb-3">
-                            <label for="title" class="form-label">Titre</label>
-                            {{ form.title(class="form-control", placeholder="Titre de l'exercice") }}
+                            <label for="title" class="form-label">Titre <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title" required>
                         </div>
 
                         <div class="mb-3">
                             <label for="description" class="form-label">Description</label>
-                            {{ form.description(class="form-control", rows=3, placeholder="Description de l'exercice") }}
+                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
                         </div>
 
                         <div class="mb-3">
                             <label for="course_id" class="form-label">Cours <span class="text-danger">*</span></label>
                             <select class="form-select" id="course_id" name="course_id" required>
                                 <option value="">Sélectionnez un cours</option>
-                                {% for class in teacher_classes %}
-                                    <optgroup label="{{ class.name }}">
-                                        {% for course in class.courses %}
-                                            <option value="{{ course.id }}" {% if request.args.get('class_id')|int == class.id %}selected{% endif %}>
-                                                {{ course.title }}
-                                            </option>
-                                        {% endfor %}
-                                    </optgroup>
+                                {% for value, label in form.course_id.choices %}
+                                    <option value="{{ value }}">{{ label }}</option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">Sélectionnez le cours auquel cet exercice sera rattaché</div>
                         </div>
 
                         <div class="row mb-3">
                             <div class="col-md-4">
                                 <label for="subject" class="form-label">Matière</label>
-                                {{ form.subject(class="form-select") }}
+                                <select class="form-select" id="subject" name="subject">
+                                    {% for value, label in form.subject.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
 
                             <div class="col-md-4">
                                 <label for="level" class="form-label">Niveau</label>
-                                {{ form.level(class="form-select") }}
+                                <select class="form-select" id="level" name="level">
+                                    {% for value, label in form.level.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
 
                             <div class="col-md-4">
                                 <label for="exercise_type" class="form-label">Type d'exercice</label>
-                                {{ form.exercise_type(class="form-select") }}
+                                <select class="form-select" id="exercise_type" name="exercise_type">
+                                    {% for value, label in form.exercise_type.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                         </div>
 
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="difficulty" class="form-label">Difficulté</label>
-                                {{ form.difficulty(class="form-select") }}
+                                <select class="form-select" id="difficulty" name="difficulty">
+                                    {% for value, label in form.difficulty.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
 
                             <div class="col-md-6">
-                                <label for="points" class="form-label">Points</label>
-                                {{ form.points(class="form-control", type="number", min="0") }}
+                                <label for="points" class="form-label">Points <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="points" name="points" min="1" required>
                             </div>
                         </div>
 
-                        <div id="text-holes-fields" style="display: none;">
-                            <div class="mb-3">
-                                <label class="form-label">Texte à trous</label>
-                                <div id="holes-container">
-                                    <!-- Les trous seront ajoutés ici -->
-                                </div>
-                                <button type="button" class="btn btn-primary mt-2" id="add-hole">
-                                    <i class="fas fa-plus"></i> Ajouter un trou
-                                </button>
-                            </div>
+                        <!-- Section pour le QCM -->
+                        <div id="qcm-section" style="display: none;">
+                            <h4 class="mb-3">Questions du QCM</h4>
+                            <div id="qcm-questions"></div>
+                            <button type="button" class="btn btn-primary mt-3" id="add-qcm-question">
+                                <i class="fas fa-plus"></i> Ajouter une question
+                            </button>
+                        </div>
+
+                        <!-- Section pour le texte à trous -->
+                        <div id="text-holes-section" style="display: none;">
+                            <h4 class="mb-3">Texte à trous</h4>
+                            <div id="holes-container"></div>
+                            <button type="button" class="btn btn-primary mt-3" id="add-hole">
+                                <i class="fas fa-plus"></i> Ajouter un trou
+                            </button>
                         </div>
 
                         <div class="text-end mt-4">
-                            <a href="{{ url_for('exercise_library') }}" class="btn btn-secondary">Annuler</a>
+                            <a href="{{ url_for('exercise_library') }}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Annuler
+                            </a>
                             <button type="submit" class="btn btn-primary">
                                 <i class="fas fa-save"></i> Créer l'exercice
                             </button>
@@ -103,177 +114,266 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const exerciseTypeSelect = document.getElementById('exercise_type');
-    const textHolesFields = document.getElementById('text-holes-fields');
-    const form = document.getElementById('exercise-form');
+    console.log('Page chargée, initialisation du formulaire');
     
-    // Log initial state
-    console.log('Initial form state:', {
-        exerciseType: exerciseTypeSelect.value,
-        textHolesVisible: textHolesFields.style.display,
-        formFields: Array.from(form.elements).map(e => ({
-            name: e.name,
-            value: e.value,
-            type: e.type
-        }))
-    });
+    const exerciseTypeSelect = document.getElementById('exercise_type');
+    const textHolesSection = document.getElementById('text-holes-section');
+    const qcmSection = document.getElementById('qcm-section');
+    const form = document.getElementById('exercise-form');
     
     function updateFieldsVisibility() {
         const selectedType = exerciseTypeSelect.value;
-        console.log('Exercise type changed to:', selectedType);
-        textHolesFields.style.display = selectedType === 'holes' ? 'block' : 'none';
+        console.log('Changement de type d\'exercice:', selectedType);
         
-        if (selectedType === 'holes' && document.getElementById('holes-container').children.length === 0) {
-            console.log('Adding first hole automatically');
+        textHolesSection.style.display = 'none';
+        qcmSection.style.display = 'none';
+        
+        document.getElementById('holes-container').innerHTML = '';
+        document.getElementById('qcm-questions').innerHTML = '';
+        
+        if (selectedType === 'text_holes') {
+            textHolesSection.style.display = 'block';
             addNewHole();
+        } else if (selectedType === 'QCM') {
+            qcmSection.style.display = 'block';
+            addNewQuestion();
         }
     }
     
-    exerciseTypeSelect.addEventListener('change', updateFieldsVisibility);
-    updateFieldsVisibility();
+    function addNewQuestion() {
+        const container = document.getElementById('qcm-questions');
+        const questionId = container.children.length;
+        
+        const questionDiv = document.createElement('div');
+        questionDiv.className = 'card mb-4 qcm-question';
+        questionDiv.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Question ${questionId + 1}</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-question">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Question <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="question_text[]" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Image (optionnelle)</label>
+                    <input type="file" class="form-control" name="question_image[]" accept="image/*">
+                    <div class="image-preview mt-2"></div>
+                </div>
+                
+                <div class="options-container">
+                    <h6 class="mb-3">Options <small class="text-muted">(sélectionnez la bonne réponse)</small></h6>
+                </div>
+                
+                <button type="button" class="btn btn-secondary btn-sm add-option">
+                    <i class="fas fa-plus"></i> Ajouter une option
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(questionDiv);
+        
+        const optionsContainer = questionDiv.querySelector('.options-container');
+        
+        // Ajouter deux options par défaut
+        addNewOption(optionsContainer, questionId);
+        addNewOption(optionsContainer, questionId);
+        
+        // Gérer la prévisualisation de l'image
+        const imageInput = questionDiv.querySelector('input[type="file"]');
+        const imagePreview = questionDiv.querySelector('.image-preview');
+        imageInput.addEventListener('change', function() {
+            handleImagePreview(this, imagePreview);
+        });
+        
+        // Gérer l'ajout d'option
+        questionDiv.querySelector('.add-option').addEventListener('click', function() {
+            addNewOption(optionsContainer, questionId);
+        });
+        
+        // Gérer la suppression de question
+        questionDiv.querySelector('.remove-question').addEventListener('click', function() {
+            questionDiv.remove();
+            updateQuestionNumbers();
+        });
+    }
+    
+    function addNewOption(container, questionId) {
+        const optionId = container.children.length;
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'option-item mb-3';
+        optionDiv.innerHTML = `
+            <div class="input-group">
+                <div class="input-group-text">
+                    <input type="radio" name="correct_answer_${questionId}" value="${optionId}" required>
+                </div>
+                <input type="text" class="form-control" name="option_text_${questionId}[]" 
+                       placeholder="Option ${optionId + 1}" required>
+                <button type="button" class="btn btn-outline-danger remove-option">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(optionDiv);
+        
+        // Mettre à jour les numéros des options
+        updateOptionNumbers(container, questionId);
+        
+        // Gérer la suppression d'option
+        optionDiv.querySelector('.remove-option').addEventListener('click', function() {
+            optionDiv.remove();
+            updateOptionNumbers(container, questionId);
+        });
+    }
+
+    function updateOptionNumbers(container, questionId) {
+        const options = container.querySelectorAll('.option-item');
+        options.forEach((option, index) => {
+            const input = option.querySelector('input[type="radio"]');
+            const textInput = option.querySelector('input[type="text"]');
+            input.value = index;
+            textInput.placeholder = `Option ${index + 1}`;
+        });
+    }
+    
+    function handleImagePreview(input, previewDiv) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewDiv.innerHTML = `<img src="${e.target.result}" class="img-fluid mt-2" style="max-height: 200px;">`;
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    function updateQuestionNumbers() {
+        const questions = document.querySelectorAll('.qcm-question');
+        questions.forEach((question, index) => {
+            question.querySelector('.card-title').textContent = `Question ${index + 1}`;
+        });
+    }
 
     function addNewHole() {
         const container = document.getElementById('holes-container');
-        const holeIndex = container.children.length + 1;
-        console.log('Adding new hole #', holeIndex);
+        const holeId = container.children.length;
         
-        const holeGroup = document.createElement('div');
-        holeGroup.className = 'hole-group mb-4 border p-3 rounded bg-light';
-        
-        holeGroup.innerHTML = `
-            <h5 class="mb-3">Trou #${holeIndex}</h5>
-            <div class="mb-3">
-                <label class="form-label">Texte avant le trou</label>
-                <textarea class="form-control text-before" rows="2"></textarea>
+        const holeDiv = document.createElement('div');
+        holeDiv.className = 'card mb-4 text-hole';
+        holeDiv.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Trou ${holeId + 1}</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-hole">
+                        <i class="fas fa-times"></i> Supprimer
+                    </button>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Texte avant le trou</label>
+                    <textarea class="form-control" name="text_before[]" rows="2"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Réponse correcte <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="hole_answer[]" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Texte après le trou</label>
+                    <textarea class="form-control" name="text_after[]" rows="2"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Image (optionnelle)</label>
+                    <input type="file" class="form-control" name="hole_image[]" accept="image/*">
+                    <div class="image-preview mt-2"></div>
+                </div>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Réponse correcte <span class="text-danger">*</span></label>
-                <input type="text" class="form-control correct-answer" required>
-                <div class="form-text">La réponse que l'étudiant devra entrer</div>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Texte après le trou</label>
-                <textarea class="form-control text-after" rows="2"></textarea>
-            </div>
-            <button type="button" class="btn btn-outline-danger remove-hole">
-                <i class="fas fa-trash"></i> Supprimer ce trou
-            </button>
         `;
         
-        container.appendChild(holeGroup);
-        console.log('New hole added, total holes:', container.children.length);
-    }
-
-    document.getElementById('add-hole').addEventListener('click', addNewHole);
-
-    document.addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove-hole')) {
-            const container = document.getElementById('holes-container');
-            if (container.children.length > 1) {
-                if (confirm('Êtes-vous sûr de vouloir supprimer ce trou ?')) {
-                    e.target.closest('.hole-group').remove();
-                    Array.from(container.children).forEach((hole, index) => {
-                        hole.querySelector('h5').textContent = `Trou #${index + 1}`;
-                    });
-                    console.log('Hole removed, remaining holes:', container.children.length);
-                }
-            } else {
-                alert('Vous devez garder au moins un trou.');
-            }
-        }
-    });
-
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        console.log('Form submission started');
+        container.appendChild(holeDiv);
         
-        // Log all form fields
-        const formData = new FormData(form);
-        console.log('Form fields before processing:');
-        for (let [key, value] of formData.entries()) {
-            console.log(`${key}: ${value}`);
-        }
-        
-        // Validate required fields
-        const requiredFields = ['title', 'description', 'subject', 'level', 'difficulty', 'points', 'course_id'];
-        let missingFields = [];
-        
-        requiredFields.forEach(field => {
-            const value = formData.get(field);
-            if (!value) {
-                missingFields.push(field);
-            }
+        // Gérer la prévisualisation de l'image
+        const imageInput = holeDiv.querySelector('input[type="file"]');
+        const imagePreview = holeDiv.querySelector('.image-preview');
+        imageInput.addEventListener('change', function() {
+            handleImagePreview(this, imagePreview);
         });
         
-        if (missingFields.length > 0) {
-            console.error('Missing required fields:', missingFields);
-            alert('Veuillez remplir tous les champs obligatoires : ' + missingFields.join(', '));
-            return;
-        }
+        // Gérer la suppression du trou
+        holeDiv.querySelector('.remove-hole').addEventListener('click', function() {
+            holeDiv.remove();
+            updateHoleNumbers();
+        });
+    }
+
+    function updateHoleNumbers() {
+        const holes = document.querySelectorAll('.text-hole');
+        holes.forEach((hole, index) => {
+            hole.querySelector('.card-title').textContent = `Trou ${index + 1}`;
+        });
+    }
+    
+    // Event listeners initiaux
+    exerciseTypeSelect.addEventListener('change', updateFieldsVisibility);
+    document.getElementById('add-qcm-question').addEventListener('click', addNewQuestion);
+    document.getElementById('add-hole').addEventListener('click', addNewHole);
+    
+    // Validation du formulaire
+    form.addEventListener('submit', function(e) {
+        const exerciseType = exerciseTypeSelect.value;
         
-        if (exerciseTypeSelect.value === 'holes') {
-            console.log('Processing holes exercise submission');
-            const holes = [];
-            let valid = true;
+        if (exerciseType === 'QCM') {
+            const questions = document.querySelectorAll('.qcm-question');
             
-            document.querySelectorAll('.hole-group').forEach((holeGroup, index) => {
-                const textBefore = holeGroup.querySelector('.text-before').value;
-                const correctAnswer = holeGroup.querySelector('.correct-answer').value.trim();
-                const textAfter = holeGroup.querySelector('.text-after').value;
-                
-                console.log(`Processing hole #${index + 1}:`, {
-                    textBefore,
-                    correctAnswer,
-                    textAfter
-                });
-                
-                if (!correctAnswer) {
-                    valid = false;
-                    const input = holeGroup.querySelector('.correct-answer');
-                    input.classList.add('is-invalid');
-                    if (!input.nextElementSibling || !input.nextElementSibling.classList.contains('invalid-feedback')) {
-                        const feedback = document.createElement('div');
-                        feedback.className = 'invalid-feedback';
-                        feedback.textContent = `La réponse du trou #${index + 1} est requise`;
-                        input.parentNode.insertBefore(feedback, input.nextSibling);
-                    }
-                    console.error(`Missing correct answer for hole #${index + 1}`);
-                }
-                
-                holes.push({
-                    text_before: textBefore,
-                    correct_answer: correctAnswer,
-                    text_after: textAfter
-                });
-            });
-            
-            if (!valid) {
-                console.error('Form validation failed: missing required answers');
-                alert('Veuillez remplir toutes les réponses correctes.');
+            if (questions.length === 0) {
+                e.preventDefault();
+                alert('Veuillez ajouter au moins une question.');
                 return;
             }
             
-            // Ajouter les données des trous au formulaire
-            const holesDataInput = document.createElement('input');
-            holesDataInput.type = 'hidden';
-            holesDataInput.name = 'holes_data';
-            holesDataInput.value = JSON.stringify(holes);
-            form.appendChild(holesDataInput);
+            let isValid = true;
+            questions.forEach((question, questionIndex) => {
+                const questionText = question.querySelector('input[name="question_text[]"]').value;
+                if (!questionText) {
+                    isValid = false;
+                    alert(`La question ${questionIndex + 1} n'a pas de texte.`);
+                }
+                
+                const options = question.querySelectorAll('input[type="text"]');
+                if (options.length < 2) {
+                    isValid = false;
+                    alert(`La question ${questionIndex + 1} doit avoir au moins deux options.`);
+                }
+                
+                const selectedAnswer = question.querySelector(`input[name="correct_answer_${questionIndex}"]:checked`);
+                if (!selectedAnswer) {
+                    isValid = false;
+                    alert(`Veuillez sélectionner une réponse correcte pour la question ${questionIndex + 1}.`);
+                }
+                
+                options.forEach((option, optionIndex) => {
+                    if (!option.value) {
+                        isValid = false;
+                        alert(`L'option ${optionIndex + 1} de la question ${questionIndex + 1} n'a pas de texte.`);
+                    }
+                });
+            });
             
-            console.log('Final holes data:', holes);
+            if (!isValid) {
+                e.preventDefault();
+            }
         }
-        
-        // Log final form data before submission
-        const finalFormData = new FormData(form);
-        console.log('Final form data before submission:');
-        for (let [key, value] of finalFormData.entries()) {
-            console.log(`${key}: ${value}`);
-        }
-        
-        // Submit the form
-        console.log('Submitting form...');
-        form.submit();
     });
+    
+    // Initialiser l'affichage en fonction du type d'exercice sélectionné
+    updateFieldsVisibility();
 });
 </script>
 {% endblock %}

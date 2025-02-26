@@ -77,67 +77,66 @@
 <body>
     <!-- Barre de navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
+        <div class="container-fluid">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-graduation-cap"></i> Classe Numérique Sainte Bernadette
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
+
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     {% if current_user.is_authenticated %}
-                        {% if current_user.is_teacher %}
+                        {% if current_user.role == 'teacher' %}
                             <li class="nav-item">
-                                <a class="nav-link {% if request.endpoint == 'teacher_dashboard' %}active{% endif %}" 
-                                   href="{{ url_for('teacher_dashboard') }}">
-                                    <i class="fas fa-chart-line"></i> Tableau de bord
+                                <a class="nav-link" href="{{ url_for('teacher_dashboard') }}">
+                                    <i class="fas fa-chalkboard-teacher"></i> Tableau de bord
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link {% if request.endpoint == 'exercise_library' %}active{% endif %}" 
-                                   href="{{ url_for('exercise_library') }}">
+                                <a class="nav-link" href="{{ url_for('exercise_library') }}">
                                     <i class="fas fa-book"></i> Bibliothèque
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('create_class') }}">
+                                    <i class="fas fa-plus-circle"></i> Créer une classe
                                 </a>
                             </li>
                         {% else %}
                             <li class="nav-item">
-                                <a class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}" 
-                                   href="{{ url_for('student_dashboard') }}">
-                                    <i class="fas fa-home"></i> Tableau de bord
+                                <a class="nav-link" href="{{ url_for('student_dashboard') }}">
+                                    <i class="fas fa-home"></i> Mes classes
                                 </a>
                             </li>
                         {% endif %}
                     {% endif %}
                 </ul>
+
                 <ul class="navbar-nav">
                     {% if current_user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('index') }}">
-                                <i class="fas fa-home"></i> Accueil
-                            </a>
-                        </li>
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" 
-                               data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user"></i> {{ current_user.username }}
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-user"></i>
+                                {% if current_user.role == 'teacher' %}
+                                    Prof. {{ current_user.username }}
+                                {% else %}
+                                    {{ current_user.username }}
+                                {% endif %}
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
-                                <li><a class="dropdown-item" href="{{ url_for('profile') }}">Profil</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('profile') }}">Mon profil</a></li>
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item" href="{{ url_for('logout') }}">Déconnexion</a></li>
                             </ul>
                         </li>
                     {% else %}
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">
-                                <i class="fas fa-sign-in-alt"></i> Connexion
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('register') }}">
-                                <i class="fas fa-user-plus"></i> Inscription
-                            </a>
+                            <a class="nav-link" href="{{ url_for('login') }}">Connexion</a>
                         </li>
                     {% endif %}
                 </ul>
@@ -167,7 +166,7 @@
     <!-- Footer -->
     <footer class="footer">
         <div class="container text-center">
-            <small>&copy; 2025 Classe Numérique Saint Bernadette. Tous droits réservés.</small>
+            <small>&copy; 2025 Classe Numérique Sainte Bernadette. Tous droits réservés.</small>
         </div>
     </footer>
 

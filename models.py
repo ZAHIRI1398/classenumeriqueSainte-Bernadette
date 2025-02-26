@@ -142,6 +142,7 @@ class Exercise(db.Model):
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     text = db.Column(db.Text, nullable=False)
+    image = db.Column(db.String(255))  # Chemin de l'image
     exercise_id = db.Column(db.Integer, db.ForeignKey('exercise.id'), nullable=False)
     
     # Relations
@@ -167,6 +168,7 @@ class ExerciseSubmission(db.Model):
     exercise_id = db.Column(db.Integer, db.ForeignKey('exercise.id'), nullable=False)
     answers = db.Column(db.JSON)
     score = db.Column(db.Float)
+    feedback = db.Column(db.Text)  # Ajout du champ feedback
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relations
