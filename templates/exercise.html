@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('accueil') }}">Accueil</a></li>
+            {% if exercise.course %}
+            <li class="breadcrumb-item"><a href="{{ url_for('view_class', class_id=exercise.course.class_.id) }}">{{ exercise.course.class_.name }}</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('view_course', course_id=exercise.course.id) }}">{{ exercise.course.title }}</a></li>
+            {% endif %}
+            <li class="breadcrumb-item active" aria-current="page">{{ exercise.title }}</li>
+        </ol>
+    </nav>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>{{ exercise.title }}</h2>
+        </div>
+        <div class="card-body">
+            <div class="mb-4">
+                <h5>Description</h5>
+                <p>{{ exercise.description }}</p>
+            </div>
+
+            <div class="mb-4">
+                <h5>Détails de l'exercice</h5>
+                <ul class="list-unstyled">
+                    <li><strong>Type :</strong> {{ exercise.exercise_type }}</li>
+                    <li><strong>Difficulté :</strong> {{ exercise.difficulty }}</li>
+                    <li><strong>Points :</strong> {{ exercise.points }}</li>
+                    <li><strong>Matière :</strong> {{ exercise.subject }}</li>
+                    <li><strong>Niveau :</strong> {{ exercise.level }}</li>
+                </ul>
+            </div>
+
+            {% if exercise.exercise_type == 'holes' %}
+            <div class="mb-4">
+                <h5>Exercice à trous</h5>
+                <form id="holes-exercise-form" method="POST" action="{{ url_for('submit_exercise', exercise_id=exercise.id) }}">
+                    {% for hole in exercise.text_holes %}
+                    <div class="hole-group mb-3">
+                        <div class="d-flex align-items-center">
+                            <span>{{ hole.text_before }}</span>
+                            <input type="text" 
+                                   class="form-control mx-2" 
+                                   style="width: auto; min-width: 100px;"
+                                   name="answer_{{ loop.index0 }}" 
+                                   required>
+                            <span>{{ hole.text_after }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    
+                    <button type="submit" class="btn btn-primary">
+                        Soumettre les réponses
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+
+            {% if current_user.is_teacher %}
+            <div class="mt-4">
+                <a href="{{ url_for('edit_exercise', exercise_id=exercise.id) }}" class="btn btn-outline-primary">
+                    <i class="fas fa-edit"></i> Modifier l'exercice
+                </a>
+                <button class="btn btn-outline-danger" onclick="confirmDelete()">
+                    <i class="fas fa-trash"></i> Supprimer l'exercice
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% if current_user.is_teacher %}
+<script>
+function confirmDelete() {
+    if (confirm('Êtes-vous sûr de vouloir supprimer cet exercice ?')) {
+        window.location.href = "{{ url_for('delete_exercise', exercise_id=exercise.id) }}";
+    }
+}
+</script>
+{% endif %}
+{% endblock %}

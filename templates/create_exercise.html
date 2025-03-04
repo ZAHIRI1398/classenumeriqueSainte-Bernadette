@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Créer un nouvel exercice</h2>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('create_exercise') }}" id="exercise-form" enctype="multipart/form-data">
+                        {{ form.csrf_token }}
+                        
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Titre <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="course_id" class="form-label">Cours <span class="text-danger">*</span></label>
+                            <select class="form-select" id="course_id" name="course_id" required>
+                                <option value="">Sélectionnez un cours</option>
+                                {% for value, label in form.course_id.choices %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="subject" class="form-label">Matière</label>
+                                <select class="form-select" id="subject" name="subject">
+                                    {% for value, label in form.subject.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="level" class="form-label">Niveau</label>
+                                <select class="form-select" id="level" name="level">
+                                    {% for value, label in form.level.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="exercise_type" class="form-label">Type d'exercice</label>
+                                <select class="form-select" id="exercise_type" name="exercise_type">
+                                    {% for value, label in form.exercise_type.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="difficulty" class="form-label">Difficulté</label>
+                                <select class="form-select" id="difficulty" name="difficulty">
+                                    {% for value, label in form.difficulty.choices %}
+                                        <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="points" class="form-label">Points <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="points" name="points" min="1" required>
+                            </div>
+                        </div>
+
+                        <!-- Section pour le QCM -->
+                        <div id="qcm-section" style="display: none;">
+                            <h4 class="mb-3">Questions du QCM</h4>
+                            <div id="qcm-questions"></div>
+                            <button type="button" class="btn btn-primary mt-3" id="add-qcm-question">
+                                <i class="fas fa-plus"></i> Ajouter une question
+                            </button>
+                        </div>
+
+                        <!-- Section pour le texte à trous -->
+                        <div id="text-holes-section" style="display: none;">
+                            <h4 class="mb-3">Texte à trous</h4>
+                            <div id="holes-container"></div>
+                            <button type="button" class="btn btn-primary mt-3" id="add-hole">
+                                <i class="fas fa-plus"></i> Ajouter un trou
+                            </button>
+                        </div>
+
+                        <!-- Section pour l'association de paires -->
+                        <div id="pair-matches-section" style="display: none;">
+                            <h4 class="mb-3">Association de paires</h4>
+                            <div id="pair-matches"></div>
+                            <button type="button" class="btn btn-primary mt-3" id="add-pair">
+                                <i class="fas fa-plus"></i> Ajouter une paire
+                            </button>
+                        </div>
+
+                        <div class="text-end mt-4">
+                            <a href="{{ url_for('exercise_library') }}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Annuler
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Créer l'exercice
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Page chargée, initialisation du formulaire');
+    
+    const exerciseTypeSelect = document.getElementById('exercise_type');
+    const textHolesSection = document.getElementById('text-holes-section');
+    const qcmSection = document.getElementById('qcm-section');
+    const pairMatchesSection = document.getElementById('pair-matches-section');
+    const form = document.getElementById('exercise-form');
+    let pairCounter = 0;
+    
+    function updateFieldsVisibility() {
+        const selectedType = exerciseTypeSelect.value;
+        console.log('Changement de type d\'exercice:', selectedType);
+        
+        textHolesSection.style.display = 'none';
+        qcmSection.style.display = 'none';
+        pairMatchesSection.style.display = 'none';
+        
+        document.getElementById('holes-container').innerHTML = '';
+        document.getElementById('qcm-questions').innerHTML = '';
+        document.getElementById('pair-matches').innerHTML = '';
+        
+        if (selectedType === 'text_holes') {
+            textHolesSection.style.display = 'block';
+            addNewHole();
+        } else if (selectedType === 'QCM') {
+            qcmSection.style.display = 'block';
+            addNewQuestion();
+        } else if (selectedType === 'PAIR_MATCH') {
+            pairMatchesSection.style.display = 'block';
+            addNewPair();
+        }
+    }
+    
+    function addNewQuestion() {
+        const container = document.getElementById('qcm-questions');
+        const questionId = container.children.length;
+        
+        const questionDiv = document.createElement('div');
+        questionDiv.className = 'card mb-4 qcm-question';
+        questionDiv.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Question ${questionId + 1}</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-question">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Question <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="question_text[]" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Image (optionnelle)</label>
+                    <input type="file" class="form-control" name="question_image[]" accept="image/*">
+                    <div class="image-preview mt-2"></div>
+                </div>
+                
+                <div class="options-container">
+                    <h6 class="mb-3">Options <small class="text-muted">(sélectionnez la bonne réponse)</small></h6>
+                </div>
+                
+                <button type="button" class="btn btn-secondary btn-sm add-option">
+                    <i class="fas fa-plus"></i> Ajouter une option
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(questionDiv);
+        
+        const optionsContainer = questionDiv.querySelector('.options-container');
+        
+        // Ajouter deux options par défaut
+        addNewOption(optionsContainer, questionId);
+        addNewOption(optionsContainer, questionId);
+        
+        // Gérer la prévisualisation de l'image
+        const imageInput = questionDiv.querySelector('input[type="file"]');
+        const imagePreview = questionDiv.querySelector('.image-preview');
+        imageInput.addEventListener('change', function() {
+            handleImagePreview(this, imagePreview);
+        });
+        
+        // Gérer l'ajout d'option
+        questionDiv.querySelector('.add-option').addEventListener('click', function() {
+            addNewOption(optionsContainer, questionId);
+        });
+        
+        // Gérer la suppression de question
+        questionDiv.querySelector('.remove-question').addEventListener('click', function() {
+            questionDiv.remove();
+            updateQuestionNumbers();
+        });
+        
+        updateQuestionNumbers();
+    }
+    
+    function addNewOption(container, questionId) {
+        const optionId = container.children.length;
+        
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'option-item mb-2';
+        optionDiv.innerHTML = `
+            <div class="input-group">
+                <div class="input-group-text">
+                    <input type="radio" name="correct_answer_${questionId}" value="${optionId}" required>
+                </div>
+                <input type="text" class="form-control" name="option_text_${questionId}[]" placeholder="Option ${optionId + 1}" required>
+                <button type="button" class="btn btn-outline-danger remove-option">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(optionDiv);
+        
+        // Gérer la suppression d'option
+        optionDiv.querySelector('.remove-option').addEventListener('click', function() {
+            optionDiv.remove();
+            updateOptionNumbers(container, questionId);
+        });
+        
+        updateOptionNumbers(container, questionId);
+    }
+    
+    function updateOptionNumbers(container, questionId) {
+        container.querySelectorAll('.option-item').forEach((item, index) => {
+            const input = item.querySelector('input[type="text"]');
+            input.placeholder = `Option ${index + 1}`;
+            
+            const radio = item.querySelector('input[type="radio"]');
+            radio.value = index;
+        });
+    }
+    
+    function handleImagePreview(input, previewDiv) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewDiv.innerHTML = `<img src="${e.target.result}" class="img-thumbnail" style="max-height: 200px;">`;
+            };
+            reader.readAsDataURL(input.files[0]);
+        } else {
+            previewDiv.innerHTML = '';
+        }
+    }
+    
+    function updateQuestionNumbers() {
+        document.querySelectorAll('.qcm-question').forEach((question, index) => {
+            question.querySelector('.card-title').textContent = `Question ${index + 1}`;
+        });
+    }
+    
+    function addNewHole() {
+        const container = document.getElementById('holes-container');
+        const holeId = container.children.length;
+        
+        const holeDiv = document.createElement('div');
+        holeDiv.className = 'card mb-4 text-hole';
+        holeDiv.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Trou ${holeId + 1}</h5>
+                    <button type="button" class="btn btn-danger btn-sm remove-hole">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Texte avant le trou</label>
+                    <textarea class="form-control" name="text_before[]" rows="2"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Mot à placer <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="hole_answer[]" required>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Texte après le trou</label>
+                    <textarea class="form-control" name="text_after[]" rows="2"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Image (optionnelle)</label>
+                    <input type="file" class="form-control" name="hole_image[]" accept="image/*">
+                    <div class="image-preview mt-2"></div>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(holeDiv);
+        
+        // Gérer la prévisualisation de l'image
+        const imageInput = holeDiv.querySelector('input[type="file"]');
+        const imagePreview = holeDiv.querySelector('.image-preview');
+        imageInput.addEventListener('change', function() {
+            handleImagePreview(this, imagePreview);
+        });
+        
+        // Gérer la suppression du trou
+        holeDiv.querySelector('.remove-hole').addEventListener('click', function() {
+            holeDiv.remove();
+            updateHoleNumbers();
+        });
+        
+        updateHoleNumbers();
+    }
+    
+    function updateHoleNumbers() {
+        document.querySelectorAll('.text-hole').forEach((hole, index) => {
+            hole.querySelector('.card-title').textContent = `Trou ${index + 1}`;
+        });
+    }
+
+    function addNewPair() {
+        const pairId = pairCounter++;
+        const pairContainer = document.createElement('div');
+        pairContainer.className = 'pair-container mb-4 p-3 border rounded';
+        pairContainer.dataset.pairId = pairId;
+
+        pairContainer.innerHTML = `
+            <div class="row align-items-center">
+                <div class="col-5">
+                    <div class="mb-2">
+                        <label class="form-label">Type de contenu gauche</label>
+                        <select class="form-select" name="left_type[]" onchange="updateContentInput(this, 'left', ${pairId})">
+                            <option value="text">Texte</option>
+                            <option value="image">Image</option>
+                        </select>
+                    </div>
+                    <div class="content-input-left-${pairId}">
+                        <input type="text" class="form-control" name="left_content[]" placeholder="Contenu gauche" required>
+                    </div>
+                </div>
+                <div class="col-1 text-center">
+                    <i class="fas fa-arrows-alt-h"></i>
+                </div>
+                <div class="col-5">
+                    <div class="mb-2">
+                        <label class="form-label">Type de contenu droit</label>
+                        <select class="form-select" name="right_type[]" onchange="updateContentInput(this, 'right', ${pairId})">
+                            <option value="text">Texte</option>
+                            <option value="image">Image</option>
+                        </select>
+                    </div>
+                    <div class="content-input-right-${pairId}">
+                        <input type="text" class="form-control" name="right_content[]" placeholder="Contenu droit" required>
+                    </div>
+                </div>
+                <div class="col-1">
+                    <button type="button" class="btn btn-danger btn-sm" onclick="removePair(${pairId})">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('pair-matches').appendChild(pairContainer);
+        updatePairNumbers();
+    }
+
+       function updateContentInput(select, side, pairId) {
+           const container = document.querySelector(`.content-input-${side}-${pairId}`);
+           const isImage = select.value === 'image';
+           
+           container.innerHTML = isImage 
+               ? `<input type="file" class="form-control" name="${side}_image[]" accept="image/*" required>
+                  <div class="mt-2 image-preview"></div>`
+               : `<input type="text" class="form-control" name="${side}_content[]" placeholder="Contenu ${side === 'left' ? 'gauche' : 'droit'}" required>`;
+   
+           if (isImage) {
+               const imageInput = container.querySelector('input[type="file"]');
+               const imagePreview = container.querySelector('.image-preview');
+               imageInput.addEventListener('change', function() {
+                   handleImagePreview(this, imagePreview);
+               });
+           }
+       }
+   
+       function removePair(pairId) {
+           const pairContainer = document.querySelector(`[data-pair-id="${pairId}"]`);
+           pairContainer.remove();
+           updatePairNumbers();
+       }
+   
+       function updatePairNumbers() {
+           const pairs = document.querySelectorAll('.pair-container');
+           pairs.forEach((pair, index) => {
+               const numberLabel = pair.querySelector('.pair-number');
+               if (numberLabel) {
+                   numberLabel.textContent = `Paire ${index + 1}`;
+               }
+           });
+       }
+   
+       // Event listeners initiaux
+       exerciseTypeSelect.addEventListener('change', updateFieldsVisibility);
+       document.getElementById('add-qcm-question').addEventListener('click', addNewQuestion);
+       document.getElementById('add-hole').addEventListener('click', addNewHole);
+       document.getElementById('add-pair').addEventListener('click', addNewPair);
+   
+       // Initialiser l'affichage
+       updateFieldsVisibility();
+   });
+   </script>
+   {% endblock %}
