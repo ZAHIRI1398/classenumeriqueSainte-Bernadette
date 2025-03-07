@@ -25,7 +25,68 @@
                     
                     {% if course.content %}
                     <div class="course-content mt-4">
-                        {{ course.content|safe }}
+                        <style>
+                            .course-content {
+                                font-size: 1rem;
+                                line-height: 1.6;
+                                color: #333;
+                                background: #fff;
+                                padding: 20px;
+                                border-radius: 8px;
+                                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                            }
+                            .course-content img {
+                                max-width: 100%;
+                                height: auto;
+                                display: block;
+                                margin: 1rem auto;
+                                border-radius: 4px;
+                            }
+                            .course-content h1, .course-content h2, .course-content h3 {
+                                color: #2c3e50;
+                                margin-top: 1.5rem;
+                                margin-bottom: 1rem;
+                                font-weight: 600;
+                            }
+                            .course-content p {
+                                margin-bottom: 1rem;
+                                text-align: justify;
+                            }
+                            .course-content ul, .course-content ol {
+                                margin-bottom: 1rem;
+                                padding-left: 2rem;
+                            }
+                            .course-content a {
+                                color: #3498db;
+                                text-decoration: none;
+                            }
+                            .course-content a:hover {
+                                text-decoration: underline;
+                            }
+                            .course-content blockquote {
+                                border-left: 4px solid #3498db;
+                                padding-left: 1rem;
+                                margin: 1rem 0;
+                                color: #666;
+                            }
+                            .course-content pre, .course-content code {
+                                background: #f8f9fa;
+                                padding: 0.2rem 0.4rem;
+                                border-radius: 4px;
+                                font-family: monospace;
+                            }
+                            @media (max-width: 768px) {
+                                .course-content {
+                                    padding: 15px;
+                                }
+                                .course-content img {
+                                    margin: 0.5rem auto;
+                                }
+                            }
+                        </style>
+                        <div class="content-display">
+                            {{ course.content|safe }}
+                        </div>
                     </div>
                     {% endif %}
                     
@@ -163,6 +224,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
                 <form action="{{ url_for('delete_course', course_id=course.id) }}" method="POST" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger">Supprimer</button>
                 </form>
             </div>

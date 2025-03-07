@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    {% if single_exercise %}
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Statistiques de l'exercice</h2>
+            <a href="{{ url_for('view_exercise', exercise_id=exercises[0].id) }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Retour à l'exercice
+            </a>
+        </div>
+    {% else %}
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Statistiques des exercices</h2>
+            <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+            </a>
+        </div>
+    {% endif %}
+    
+    {% for exercise in exercises %}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">{{ exercise.title }}</h5>
+            <span class="badge bg-primary">{{ exercise.exercise_type }}</span>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Statistiques générales</h6>
+                    <ul class="list-unstyled">
+                        <li><i class="fas fa-users"></i> Nombre de soumissions : {{ exercise.submissions|length }}</li>
+                        <li><i class="fas fa-calculator"></i> Score moyen : {{ "%.1f"|format(exercise.average_score|default(0)) }}%</li>
+                        <li><i class="fas fa-trophy"></i> Meilleur score : {{ "%.1f"|format(exercise.max_score|default(0)) }}%</li>
+                        <li><i class="fas fa-exclamation-triangle"></i> Score minimum : {{ "%.1f"|format(exercise.min_score|default(0)) }}%</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6>Distribution des scores</h6>
+                    <div class="progress" style="height: 25px;">
+                        {% set ranges = [(0, 25), (25, 50), (50, 75), (75, 100)] %}
+                        {% for start, end in ranges %}
+                            {% set count = exercise.score_distribution.get((start, end), 0) %}
+                            {% set percentage = (count / exercise.submissions|length * 100)|round if exercise.submissions else 0 %}
+                            <div class="progress-bar bg-{{ ['danger', 'warning', 'info', 'success'][loop.index0] }}" 
+                                 role="progressbar" 
+                                 style="width: {{ percentage }}%"
+                                 data-bs-toggle="tooltip"
+                                 title="{{ start }}-{{ end }}% : {{ count }} élève(s)">
+                                {{ percentage }}%
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            <span class="badge bg-danger">0-25%</span>
+                            <span class="badge bg-warning">25-50%</span>
+                            <span class="badge bg-info">50-75%</span>
+                            <span class="badge bg-success">75-100%</span>
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            {% if exercise.submissions %}
+            <div class="mt-4">
+                <h6>Détail des soumissions</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Élève</th>
+                                <th>Score</th>
+                                <th>Date de soumission</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for submission in exercise.submissions %}
+                            <tr>
+                                <td>{{ submission.student.username }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if submission.score >= 75 else 'info' if submission.score >= 50 else 'warning' if submission.score >= 25 else 'danger' }}">
+                                        {{ "%.1f"|format(submission.score) }}%
+                                    </span>
+                                </td>
+                                <td>{{ submission.submitted_at.strftime('%d/%m/%Y %H:%M') }}</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-info" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#submissionModal{{ submission.id }}">
+                                        <i class="fas fa-eye"></i> Voir les détails
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {% for submission in exercise.submissions %}
+            <div class="modal fade" id="submissionModal{{ submission.id }}" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Détails de la soumission - {{ submission.student.username }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            {% if exercise.exercise_type == 'PAIR_MATCH' %}
+                                <h6>Correspondances de l'élève :</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Élément</th>
+                                                <th>Réponse</th>
+                                                <th>Statut</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for pair in exercise.pair_matches %}
+                                            <tr>
+                                                <td>{{ pair.left_content }}</td>
+                                                <td>{{ pair.right_content }}</td>
+                                                <td>
+                                                    {% if submission.answers.get(pair.id|string) == pair.id %}
+                                                        <span class="text-success"><i class="fas fa-check"></i> Correct</span>
+                                                    {% else %}
+                                                        <span class="text-danger"><i class="fas fa-times"></i> Incorrect</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialisation des tooltips Bootstrap
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+});
+</script>
+{% endblock %}

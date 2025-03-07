@@ -1,12 +1,12 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from logging.handlers import RotatingFileHandler
-from flask import Flask, render_template, url_for, flash, redirect, request, jsonify, send_from_directory, abort, session, send_file
+from flask import Flask, render_template, url_for, flash, redirect, request, jsonify, send_from_directory, abort, session, send_file, current_app
 from flask_login import login_user, current_user, logout_user, login_required, LoginManager, UserMixin
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm, CSRFProtect
+from flask_wtf import FlaskForm
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 logger.info('Application démarrée')
 
 import sys
-from extensions import db, migrate, bcrypt, csrf
+from extensions import db, migrate, bcrypt, login_manager, csrf
 
 # Configuration des dossiers
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
 
 # Import des formulaires
 from forms import (LoginForm, RegistrationForm, ClassForm, CourseForm, 
@@ -39,37 +39,30 @@ from forms import (LoginForm, RegistrationForm, ClassForm, CourseForm,
 # Configuration de l'application
 app = Flask(__name__)
 app.config.from_object('config')
-app.config['SECRET_KEY'] = 'votre_cle_secrete_ici'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-app.config['REMEMBER_COOKIE_DURATION'] = timedelta(days=7)
-app.config['REMEMBER_COOKIE_SECURE'] = False
-app.config['REMEMBER_COOKIE_HTTPONLY'] = True
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'}
+
+# Configuration des dossiers statiques
+app.static_folder = 'static'
+app.static_url_path = '/static'
 
 # Initialisation des extensions
 db.init_app(app)
 migrate.init_app(app, db)
 bcrypt.init_app(app)
-csrf = CSRFProtect(app)  # Initialiser la protection CSRF
-
-# Initialisation de Flask-Login
-login_manager = LoginManager()
+csrf.init_app(app)
 login_manager.init_app(app)
+
+# Configuration de Flask-Login
 login_manager.login_view = 'login'
 login_manager.session_protection = "strong"
+
+# Import des modèles et des utilitaires
+from models import User, Class, Course, Exercise, ExerciseSubmission, CourseFile, Question, Choice, TextHole, ClassEnrollment, ClassExercise, PairMatch
+from logs import logger, log_database_error, log_form_data, log_model_creation, log_request_info
 
 @login_manager.user_loader
 def load_user(user_id):
     print(f"Loading user {user_id}")  # Debug print
     return User.query.get(int(user_id))
-
-# Import des modèles et des formulaires après l'initialisation de db
-from models import User, Class, Course, Exercise, ExerciseSubmission, CourseFile, Question, Choice, TextHole, ClassEnrollment, ClassExercise, PairMatch
-from logs import logger, log_database_error, log_form_data, log_model_creation, log_request_info
 
 # Filtre Jinja pour convertir le JSON en objet Python
 @app.template_filter('from_json')
@@ -81,10 +74,6 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# Configuration des dossiers statiques
-app.static_folder = 'static'
-app.static_url_path = '/static'
 
 # Décorateur pour restreindre l'accès aux enseignants
 def teacher_required(f):
@@ -121,6 +110,7 @@ def login():
             print(f"Login successful for user {user.id}")  # Debug print
             # Définir la session comme permanente si "remember me" est coché
             if form.remember.data:
+                app.permanent_session_lifetime = timedelta(days=30)
                 session.permanent = True
             login_user(user, remember=form.remember.data)
             next_page = request.args.get('next')
@@ -373,7 +363,7 @@ def create_course(class_id):
             course = Course(
                 title=form.title.data,
                 description=form.description.data,
-                content=form.content.data,
+                content=request.form.get('content', ''),
                 class_id=class_id
             )
             db.session.add(course)
@@ -921,7 +911,9 @@ def edit_course(course_id):
     form = CourseForm(obj=course)
     
     if form.validate_on_submit():
-        form.populate_obj(course)
+        course.title = form.title.data
+        course.description = form.description.data
+        course.content = request.form.get('content', '')
         
         # Gérer les fichiers uploadés
         if 'files' in request.files:
@@ -955,25 +947,25 @@ def edit_course(course_id):
 @app.route('/course/file/<int:file_id>')
 @login_required
 def download_course_file(file_id):
-    course_file = CourseFile.query.get_or_404(file_id)
-    course = course_file.course
+    file = CourseFile.query.get_or_404(file_id)
+    course = file.course
     class_ = course.class_
 
-    # Vérifier que l'utilisateur a accès à ce fichier
-    if current_user.id != class_.teacher_id and current_user not in [enrollment.student for enrollment in class_.enrolled_students]:
+    # Vérifier si l'utilisateur a accès au fichier
+    if current_user.id != class_.teacher_id and current_user not in class_.students:
         flash('Vous n\'avez pas accès à ce fichier.', 'danger')
-        return redirect(url_for('index'))
+        return redirect(url_for('student_dashboard'))
 
-    try:
-        return send_file(
-            course_file.file_path,
-            as_attachment=True,
-            download_name=course_file.filename
-        )
-    except Exception as e:
-        log_database_error(e, "download_course_file route")
-        flash('Erreur lors du téléchargement du fichier.', 'danger')
+    # Construire le chemin du fichier
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+    
+    # Vérifier si le fichier existe
+    if not os.path.exists(file_path):
+        flash('Le fichier n\'existe pas.', 'danger')
         return redirect(url_for('view_course', course_id=course.id))
+
+    # Envoyer le fichier
+    return send_file(file_path, as_attachment=True)
 
 @app.route('/course/file/<int:file_id>/view')
 @login_required
@@ -1041,6 +1033,12 @@ def view_course(course_id):
 @login_required
 @teacher_required
 def delete_course(course_id):
+    # Vérifier le jeton CSRF
+    if not request.form.get('csrf_token'):
+        logger.warning(f"Tentative de suppression du cours {course_id} sans jeton CSRF")
+        flash('Une erreur de sécurité est survenue. Veuillez réessayer.', 'danger')
+        return redirect(url_for('view_course', course_id=course_id))
+
     try:
         logger.info(f"Tentative de suppression du cours {course_id}")
         course = Course.query.get_or_404(course_id)
@@ -1264,6 +1262,7 @@ def submit_exercise(exercise_id):
                 matches = json.loads(matches)
                 score = 0
                 total_pairs = len(exercise.pair_matches)
+                answers = {}
                 
                 # Validate matches format
                 if not isinstance(matches, list):
@@ -1275,25 +1274,28 @@ def submit_exercise(exercise_id):
                         
                     left_id = match['left_id']
                     right_id = match['right_id']
+                    answers[str(left_id)] = right_id
                     
                     # Check if the match is correct
                     if left_id == right_id:
                         score += 1
                 
                 # Calculate percentage score
-                percentage_score = (score / total_pairs) * 100
+                final_score = (score / total_pairs) * 100
                 
                 # Create submission
                 submission = ExerciseSubmission(
                     student_id=current_user.id,
                     exercise_id=exercise_id,
-                    score=percentage_score,
+                    answers=answers,
+                    score=final_score,
                     submitted_at=datetime.utcnow()
                 )
                 db.session.add(submission)
                 db.session.commit()
                 
-                flash(f'Exercice soumis ! Score: {percentage_score:.1f}%', 'success')
+                flash(f'Exercice soumis ! Score: {final_score:.1f}%', 'success')
+                return redirect(url_for('view_exercise', exercise_id=exercise_id))
                 
             except (json.JSONDecodeError, ValueError) as e:
                 flash('Format de soumission invalide.', 'error')
@@ -1684,44 +1686,47 @@ def remove_student_from_class(class_id, student_id):
 @teacher_required
 def upload_course_file(course_id):
     course = Course.query.get_or_404(course_id)
-    if current_user != course.class_.teacher:
-        flash('Vous n\'avez pas la permission d\'ajouter des fichiers à ce cours.', 'danger')
+    class_ = course.class_
+
+    if current_user.id != class_.teacher_id:
+        flash('Vous n\'êtes pas autorisé à télécharger des fichiers pour ce cours.', 'danger')
         return redirect(url_for('view_course', course_id=course_id))
-    
-    if 'file' not in request.files:
-        flash('Aucun fichier sélectionné.', 'danger')
-        return redirect(url_for('view_course', course_id=course_id))
-    
-    file = request.files['file']
-    if file.filename == '':
-        flash('Aucun fichier sélectionné.', 'danger')
-        return redirect(url_for('view_course', course_id=course_id))
-    
-    if file and allowed_file(file.filename):
-        # Sécuriser le nom du fichier
-        filename = secure_filename(file.filename)
-        # Créer un nom de fichier unique
-        unique_filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{filename}"
-        # Sauvegarder le fichier
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-        file.save(file_path)
-        
-        # Créer l'entrée dans la base de données
-        course_file = CourseFile(
-            filename=filename,
-            file_path=unique_filename,
-            course_id=course_id
-        )
-        db.session.add(course_file)
-        db.session.commit()
-        
-        log_request_info(request)
-        logger.info(f"File uploaded successfully to course with ID: {course_id}")
-        flash('Le fichier a été téléchargé avec succès.', 'success')
-    else:
-        flash('Type de fichier non autorisé.', 'danger')
-    
-    return redirect(url_for('view_course', course_id=course_id))
+
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            flash('Aucun fichier n\'a été sélectionné.', 'danger')
+            return redirect(request.url)
+
+        file = request.files['file']
+        if file.filename == '':
+            flash('Aucun fichier n\'a été sélectionné.', 'danger')
+            return redirect(request.url)
+
+        if file:
+            filename = secure_filename(file.filename)
+            unique_filename = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{filename}"
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            
+            try:
+                os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+                file.save(file_path)
+                
+                course_file = CourseFile(
+                    filename=unique_filename,
+                    file_path=file_path,
+                    course_id=course_id
+                )
+                db.session.add(course_file)
+                db.session.commit()
+                
+                flash('Fichier téléchargé avec succès.', 'success')
+                return redirect(url_for('view_course', course_id=course_id))
+            except Exception as e:
+                app.logger.error(f"Erreur lors du téléchargement du fichier : {str(e)}")
+                flash('Une erreur est survenue lors du téléchargement du fichier.', 'danger')
+                return redirect(request.url)
+
+    return render_template('upload_course_file.html', course=course)
 
 @app.route('/upload/image/<int:course_id>', methods=['POST'])
 @login_required
@@ -1885,7 +1890,93 @@ def debug_submissions(exercise_id):
     
     return jsonify(debug_info)
 
+@app.route('/exercise_stats')
+@login_required
+def exercise_stats():
+    if not current_user.is_teacher:
+        flash('Accès non autorisé.', 'error')
+        return redirect(url_for('index'))
 
+    # Récupérer tous les exercices
+    exercises = Exercise.query.all()
+    
+    # Préparer les statistiques pour chaque exercice
+    for exercise in exercises:
+        # Récupérer toutes les soumissions pour cet exercice avec les données des étudiants
+        submissions = ExerciseSubmission.query\
+            .filter_by(exercise_id=exercise.id)\
+            .join(User, ExerciseSubmission.student_id == User.id)\
+            .add_entity(User)\
+            .all()
+        
+        # Convertir les résultats en objets plus faciles à manipuler
+        exercise.submissions = []
+        for submission, user in submissions:
+            submission.student = user
+            exercise.submissions.append(submission)
+        
+        if exercise.submissions:
+            scores = [s.score for s in exercise.submissions]
+            exercise.average_score = sum(scores) / len(scores)
+            exercise.max_score = max(scores)
+            exercise.min_score = min(scores)
+            
+            # Calculer la distribution des scores
+            exercise.score_distribution = {}
+            ranges = [(0, 25), (25, 50), (50, 75), (75, 100)]
+            for start, end in ranges:
+                count = sum(1 for score in scores if start <= score < end or (end == 100 and score == 100))
+                exercise.score_distribution[(start, end)] = count
+        else:
+            exercise.average_score = 0
+            exercise.max_score = 0
+            exercise.min_score = 0
+            exercise.score_distribution = {(0, 25): 0, (25, 50): 0, (50, 75): 0, (75, 100): 0}
+
+    return render_template('exercise_stats.html', exercises=exercises)
+
+@app.route('/exercise/<int:exercise_id>/stats')
+@login_required
+def exercise_specific_stats(exercise_id):
+    if not current_user.is_teacher:
+        flash('Accès non autorisé.', 'error')
+        return redirect(url_for('index'))
+
+    # Récupérer l'exercice spécifique
+    exercise = Exercise.query.get_or_404(exercise_id)
+    
+    # Récupérer toutes les soumissions pour cet exercice avec les données des étudiants
+    submissions = ExerciseSubmission.query\
+        .filter_by(exercise_id=exercise.id)\
+        .join(User, ExerciseSubmission.student_id == User.id)\
+        .add_entity(User)\
+        .all()
+    
+    # Convertir les résultats en objets plus faciles à manipuler
+    exercise.submissions = []
+    for submission, user in submissions:
+        submission.student = user
+        exercise.submissions.append(submission)
+    
+    if exercise.submissions:
+        scores = [s.score for s in exercise.submissions]
+        exercise.average_score = sum(scores) / len(scores)
+        exercise.max_score = max(scores)
+        exercise.min_score = min(scores)
+        
+        # Calculer la distribution des scores
+        exercise.score_distribution = {}
+        ranges = [(0, 25), (25, 50), (50, 75), (75, 100)]
+        for start, end in ranges:
+            count = sum(1 for score in scores if start <= score < end or (end == 100 and score == 100))
+            exercise.score_distribution[(start, end)] = count
+    else:
+        exercise.average_score = 0
+        exercise.max_score = 0
+        exercise.min_score = 0
+        exercise.score_distribution = {(0, 25): 0, (25, 50): 0, (50, 75): 0, (75, 100): 0}
+
+    return render_template('exercise_stats.html', exercises=[exercise], single_exercise=True)
 
 if __name__ == '__main__':
     with app.app_context():
