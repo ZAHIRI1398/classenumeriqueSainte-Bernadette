@@ -1892,51 +1892,58 @@ def debug_submissions(exercise_id):
 
 @app.route('/exercise_stats')
 @login_required
+@teacher_required
 def exercise_stats():
-    if not current_user.is_teacher:
-        flash('Accès non autorisé.', 'error')
-        return redirect(url_for('index'))
-
-    # Récupérer tous les exercices
-    exercises = Exercise.query.all()
-    
-    # Préparer les statistiques pour chaque exercice
-    for exercise in exercises:
-        # Récupérer toutes les soumissions pour cet exercice avec les données des étudiants
-        submissions = ExerciseSubmission.query\
-            .filter_by(exercise_id=exercise.id)\
-            .join(User, ExerciseSubmission.student_id == User.id)\
-            .add_entity(User)\
-            .all()
+    try:
+        # Récupérer toutes les classes de l'enseignant
+        teacher_classes = Class.query.filter_by(teacher_id=current_user.id).all()
         
-        # Convertir les résultats en objets plus faciles à manipuler
-        exercise.submissions = []
-        for submission, user in submissions:
-            submission.student = user
-            exercise.submissions.append(submission)
+        # Récupérer tous les exercices de ces classes
+        all_exercises = []
+        for class_ in teacher_classes:
+            for course in class_.courses:
+                all_exercises.extend(course.exercises)
         
-        if exercise.submissions:
-            scores = [s.score for s in exercise.submissions]
-            exercise.average_score = sum(scores) / len(scores)
-            exercise.max_score = max(scores)
-            exercise.min_score = min(scores)
+        # Calculer les statistiques
+        total_exercises = len(all_exercises)
+        total_submissions = 0
+        average_scores = []
+        
+        exercise_stats = []
+        for exercise in all_exercises:
+            submissions = ExerciseSubmission.query.filter_by(exercise_id=exercise.id).all()
+            num_submissions = len(submissions)
+            total_submissions += num_submissions
             
-            # Calculer la distribution des scores
-            exercise.score_distribution = {}
-            ranges = [(0, 25), (25, 50), (50, 75), (75, 100)]
-            for start, end in ranges:
-                count = sum(1 for score in scores if start <= score < end or (end == 100 and score == 100))
-                exercise.score_distribution[(start, end)] = count
-        else:
-            exercise.average_score = 0
-            exercise.max_score = 0
-            exercise.min_score = 0
-            exercise.score_distribution = {(0, 25): 0, (25, 50): 0, (50, 75): 0, (75, 100): 0}
-
-    return render_template('exercise_stats.html', exercises=exercises)
+            if num_submissions > 0:
+                avg_score = sum(sub.score for sub in submissions) / num_submissions
+                average_scores.append(avg_score)
+                
+                exercise_stats.append({
+                    'exercise': exercise,
+                    'submissions': num_submissions,
+                    'average_score': avg_score,
+                    'class_name': exercise.course.class_.name
+                })
+        
+        overall_stats = {
+            'total_exercises': total_exercises,
+            'total_submissions': total_submissions,
+            'average_score': sum(average_scores) / len(average_scores) if average_scores else 0
+        }
+        
+        return render_template('exercise_stats.html',
+                             exercise_stats=exercise_stats,
+                             overall_stats=overall_stats)
+                             
+    except Exception as e:
+        logger.error(f"Error accessing exercise statistics: {str(e)}")
+        flash("Une erreur s'est produite lors de l'accès aux statistiques.", "error")
+        return redirect(url_for('teacher_dashboard'))
 
 @app.route('/exercise/<int:exercise_id>/stats')
 @login_required
+@teacher_required
 def exercise_specific_stats(exercise_id):
     if not current_user.is_teacher:
         flash('Accès non autorisé.', 'error')
@@ -1946,16 +1953,12 @@ def exercise_specific_stats(exercise_id):
     exercise = Exercise.query.get_or_404(exercise_id)
     
     # Récupérer toutes les soumissions pour cet exercice avec les données des étudiants
-    submissions = ExerciseSubmission.query\
-        .filter_by(exercise_id=exercise.id)\
-        .join(User, ExerciseSubmission.student_id == User.id)\
-        .add_entity(User)\
-        .all()
+    submissions = ExerciseSubmission.query.filter_by(exercise_id=exercise_id).all()
     
     # Convertir les résultats en objets plus faciles à manipuler
     exercise.submissions = []
-    for submission, user in submissions:
-        submission.student = user
+    for submission in submissions:
+        submission.student = User.query.get(submission.student_id)
         exercise.submissions.append(submission)
     
     if exercise.submissions:
