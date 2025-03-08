@@ -4,89 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classe Numérique Sainte Bernadette - {% block title %}{% endblock %}</title>
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .navbar-brand {
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-        .nav-link {
-            color: rgba(255, 255, 255, 0.8) !important;
-        }
-        .nav-link:hover {
-            color: white !important;
-        }
-        .nav-link.active {
-            color: white !important;
-            font-weight: bold;
-        }
-        .filter-group {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            margin-left: 2rem;
-        }
-        .filter-group select {
-            background-color: transparent;
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-        }
-        .filter-group select option {
-            background-color: #212529;
-            color: white;
-        }
-        .navbar-custom {
-            background-color: #2c3e50;
-        }
-        .navbar-custom .navbar-brand,
-        .navbar-custom .nav-link {
-            color: white;
-        }
-        .navbar-custom .nav-link:hover {
-            color: #ecf0f1;
-        }
-        .footer {
-            background-color: #2c3e50;
-            color: white;
-            padding: 1rem 0;
-            position: fixed;
-            bottom: 0;
-            width: 100%;
-        }
-        .main-content {
-            margin-bottom: 80px; /* Pour éviter que le contenu ne soit caché par le footer */
-        }
-        .feature-icon {
-            width: 3rem;
-            height: 3rem;
-            border-radius: 0.75rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .feature-icon i {
-            font-size: 1.5rem;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <!-- Barre de navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-graduation-cap"></i> Classe Numérique Sainte Bernadette
             </a>
-
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
-                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
-
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     {% if current_user.is_authenticated %}
@@ -107,11 +38,6 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('create_exercise') }}">
-                                    <i class="fas fa-plus"></i> Créer un exercice
-                                </a>
-                            </li>
-                            <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('exercise_stats') }}">
                                     <i class="fas fa-chart-bar"></i> Statistiques
                                 </a>
@@ -125,12 +51,11 @@
                         {% endif %}
                     {% endif %}
                 </ul>
-
                 <ul class="navbar-nav">
                     {% if current_user.is_authenticated %}
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button"
-                                data-bs-toggle="dropdown" aria-expanded="false">
+                               data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-user"></i>
                                 {% if current_user.role == 'teacher' %}
                                     Prof. {{ current_user.username }}
@@ -154,7 +79,6 @@
         </div>
     </nav>
 
-    <!-- Messages flash -->
     <div class="container mt-3">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -168,20 +92,17 @@
         {% endwith %}
     </div>
 
-    <!-- Contenu principal -->
     <div class="container main-content mt-4">
         {% block content %}{% endblock %}
     </div>
 
-    <!-- Footer -->
-    <footer class="footer">
+    <footer class="footer mt-5">
         <div class="container text-center">
             <small>&copy; 2025 Classe Numérique Sainte Bernadette. Tous droits réservés.</small>
         </div>
     </footer>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
     {% block scripts %}{% endblock %}
 </body>
